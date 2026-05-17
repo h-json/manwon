@@ -2,12 +2,14 @@
 -- Manwon 백엔드 DDL
 -- ddl-auto=validate 이므로 운영 전 이 스크립트를 수동 적용해야 함.
 -- ERD 대비 변경 사항:
---   user      : password 제거, provider/provider_user_id/email 추가
---   amount    : created_dt 추가, is_no_spend 추가, category/content NULL 허용
---   challenge : result 컬럼 추가 (NULL=진행중 / SUCCESS / FAIL)
+--   user          : password 제거, provider/provider_user_id/email 추가
+--   amount        : created_dt 추가, is_no_spend 추가, category/content NULL 허용
+--   challenge     : result 컬럼 추가 (NULL=진행중 / SUCCESS / FAIL)
+--   refresh_token : 신설 — JWT 모바일 인증의 RT 보관소
 -- ============================================================
 
 -- 외래키 순서를 고려한 드롭
+DROP TABLE IF EXISTS `refresh_token`;
 DROP TABLE IF EXISTS `user_badge`;
 DROP TABLE IF EXISTS `badge`;
 DROP TABLE IF EXISTS `media_file`;
@@ -93,6 +95,20 @@ CREATE TABLE `user_badge` (
         FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`),
     CONSTRAINT `fk_user_badge_badge`
         FOREIGN KEY (`badge_id`) REFERENCES `badge` (`badge_id`)
+);
+
+CREATE TABLE `refresh_token` (
+    `refresh_token_id`  BIGINT AUTO_INCREMENT                            NOT NULL,
+    `user_id`           BIGINT                                           NOT NULL,
+    `token_hash`        VARCHAR(255)                                     NOT NULL,
+    `expires_at`        DATETIME                                         NOT NULL,
+    `revoked`           TINYINT(1)    DEFAULT 0                          NOT NULL,
+    `created_dt`        DATETIME      DEFAULT CURRENT_TIMESTAMP          NOT NULL,
+    PRIMARY KEY (`refresh_token_id`),
+    UNIQUE KEY `uk_refresh_token_hash` (`token_hash`),
+    KEY `idx_refresh_token_user` (`user_id`),
+    CONSTRAINT `fk_refresh_token_user`
+        FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`)
 );
 
 -- ============================================================

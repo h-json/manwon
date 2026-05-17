@@ -16,6 +16,13 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U0001", "사용자를 찾을 수 없습니다."),
     USER_ALREADY_WITHDRAWN(HttpStatus.BAD_REQUEST, "U0002", "이미 탈퇴한 사용자입니다."),
 
+    AUTH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AU0001", "유효하지 않은 토큰입니다."),
+    AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AU0002", "만료된 토큰입니다."),
+    AUTH_REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AU0003", "유효하지 않은 리프레시 토큰입니다."),
+    AUTH_KAKAO_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AU0004", "카카오 액세스 토큰이 유효하지 않습니다."),
+    AUTH_KAKAO_APP_MISMATCH(HttpStatus.UNAUTHORIZED, "AU0005", "이 토큰은 다른 카카오 앱에서 발급된 토큰입니다."),
+    AUTH_KAKAO_USERINFO_FAILED(HttpStatus.BAD_GATEWAY, "AU0006", "카카오 사용자 정보 조회에 실패했습니다."),
+
     CHALLENGE_NOT_FOUND(HttpStatus.NOT_FOUND, "CH0001", "챌린지를 찾을 수 없습니다."),
     CHALLENGE_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "CH0002", "챌린지 기간은 시작일 이후이고 최대 7일까지 가능합니다."),
     CHALLENGE_NOT_OWNER(HttpStatus.FORBIDDEN, "CH0003", "본인 챌린지가 아닙니다."),

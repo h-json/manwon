@@ -6,7 +6,6 @@ import com.hjson.manwon.domain.user.dto.UserResponse;
 import com.hjson.manwon.security.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -38,13 +37,10 @@ public class UserController {
         return ApiResponse.ok(UserResponse.from(userService.getActiveUser(userId)));
     }
 
-    @Operation(summary = "회원 탈퇴(소프트 딜리트)")
+    @Operation(summary = "회원 탈퇴(소프트 딜리트) — 모든 RT가 함께 무효화됨")
     @DeleteMapping("/me")
-    public ApiResponse<Void> withdraw(@CurrentUserId Long userId, HttpServletRequest request) {
+    public ApiResponse<Void> withdraw(@CurrentUserId Long userId) {
         userService.withdraw(userId);
-        if (request.getSession(false) != null) {
-            request.getSession().invalidate();
-        }
         return ApiResponse.ok();
     }
 }
