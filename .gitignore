@@ -39,16 +39,16 @@ out/
 ### Tenk ###
 tenk-backend/uploads/
 
-### Flutter (tenk-app/) ###
-# `flutter create`가 tenk-app/.gitignore를 따로 생성하지만, 루트에도 안전망으로 둠
-tenk-app/.dart_tool/
-tenk-app/.flutter-plugins
-tenk-app/.flutter-plugins-dependencies
-tenk-app/.packages
-tenk-app/build/
-tenk-app/ios/Pods/
-tenk-app/ios/.symlinks/
-tenk-app/android/.gradle/
-tenk-app/android/local.properties
-tenk-app/android/key.properties
-tenk-app/**/GeneratedPluginRegistrant.*
+### Flutter (tenk_app/) ###
+# `flutter create`가 tenk_app/.gitignore를 자체 생성하므로 루트에는 안전망용 최소 항목만 둠
+tenk_app/.dart_tool/
+tenk_app/.flutter-plugins
+tenk_app/.flutter-plugins-dependencies
+tenk_app/.packages
+tenk_app/build/
+tenk_app/ios/Pods/
+tenk_app/ios/.symlinks/
+tenk_app/android/.gradle/
+tenk_app/android/local.properties
+tenk_app/android/key.properties
+tenk_app/**/GeneratedPluginRegistrant.*

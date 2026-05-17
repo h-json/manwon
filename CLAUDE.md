@@ -33,11 +33,11 @@ tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
 │   ├── build.gradle, settings.gradle
 │   ├── gradlew, gradlew.bat, gradle/
 │   └── uploads/            # gitignored, 런타임 영상 저장 (`tenk.upload.base-dir` 기본값)
-└── tenk-app/               # Flutter 모바일 앱 (iOS/Android 단일 코드베이스)
+└── tenk_app/               # Flutter 모바일 앱 (iOS/Android 단일 코드베이스, Dart 패키지명 `tenk_app`)
 ```
 
 - 백엔드 명령(`gradlew`, 빌드, 실행)은 모두 **`tenk-backend/`에서 실행**.
-- Flutter 명령(`flutter pub get`, `flutter run`)은 모두 **`tenk-app/`에서 실행**.
+- Flutter 명령(`flutter pub get`, `flutter run`)은 모두 **`tenk_app/`에서 실행**.
 - DB 스키마(`mysql ... < docs/schema.sql`)는 **리포 루트에서 실행** (docs는 루트에 있음).
 - API 계약을 바꾸면 **백엔드와 앱을 같은 PR에서 함께 갱신**할 것 (모노레포 이점).
 
@@ -165,7 +165,7 @@ cd tenk-backend
 ### Flutter 앱
 
 ```powershell
-cd tenk-app
+cd tenk_app
 flutter pub get
 flutter run    # 연결된 디바이스/에뮬레이터에서 실행
 ```

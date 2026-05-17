@@ -9,7 +9,7 @@
 
 ## 새 컴퓨터에서 시작하는 순서
 
-> 리포 구조는 모노레포: `tenk-backend/`(Spring Boot) + `tenk-app/`(Flutter). 자세한 건 [../CLAUDE.md](../CLAUDE.md) "리포 구조" 섹션.
+> 리포 구조는 모노레포: `tenk-backend/`(Spring Boot) + `tenk_app/`(Flutter). 자세한 건 [../CLAUDE.md](../CLAUDE.md) "리포 구조" 섹션.
 
 1. 저장소 클론 후 IntelliJ/VS Code 등으로 열기. JDK 21 확인. (Flutter 작업까지 한다면 Flutter SDK도)
 2. MariaDB 준비 → `docs/schema.sql` 적용 (CLAUDE.md '로컬 실행 방법' 참고). 리포 루트에서 `mysql -u tenk -p tenk < docs/schema.sql`.
@@ -36,17 +36,21 @@
 - [x] Swagger UI (`/swagger-ui.html`)
 - [x] `./gradlew.bat compileJava` 통과 확인 (런타임은 아직 미검증)
 - [x] DB 연결: `Tenk` 로컬 계정 + `docs/schema.sql` 적용 완료 (모든 테이블 비어 있음)
-- [x] 모노레포 재구조화: 백엔드 → `tenk-backend/`, Flutter 자리 `tenk-app/` 확보 (Flutter 스캐폴딩 전)
+- [x] 모노레포 재구조화: 백엔드 → `tenk-backend/`, Flutter 자리 `tenk_app/` 확보 (Flutter 스캐폴딩 전)
 - [x] CORS 비활성화 (Flutter 네이티브 앱만 대상)
 
 ## 남은 일 (우선순위 순)
 
-### 1. Flutter 앱 스캐폴딩 (tenk-app/)
-- `cd tenk-app && flutter create .` 로 프로젝트 초기화 (Dart 3.x, null safety 기본).
-- 의존성: `kakao_flutter_sdk_user`, `dio`(또는 `http`), `flutter_secure_storage`, `camera`.
-- 카카오 디벨로퍼스에서 **Android 키 해시 + iOS Bundle ID** 등록 필요 (모바일 플랫폼 설정).
-- 초기 구성: AT/RT를 `flutter_secure_storage`에 저장 + 401 시 자동 refresh 인터셉터.
-- 백엔드 base URL: Android 에뮬레이터는 `http://10.0.2.2:8080`, iOS 시뮬레이터는 `http://localhost:8080`.
+### 1. Flutter 앱 초기 구성 (tenk_app/)
+- ✅ 스캐폴딩 완료: `flutter create --org com.hjson --project-name tenk_app --platforms android,ios .` (Android applicationId/iOS bundle ID 모두 `com.hjson.tenk_app`)
+- ✅ 의존성 추가: `kakao_flutter_sdk_user`, `dio`, `flutter_secure_storage`, `camera`
+- 남은 일:
+  - 카카오 디벨로퍼스에서 **Android 키 해시 + iOS Bundle ID(`com.hjson.tenk_app`)** 등록 (모바일 플랫폼 설정).
+  - Android: `tenk_app/android/app/build.gradle`에서 `minSdkVersion` 카카오 SDK 요구사항(21 이상) 확인.
+  - iOS: `tenk_app/ios/Runner/Info.plist`에 카카오 SDK URL scheme 등록 (`kakao{APP_KEY}`).
+  - AT/RT를 `flutter_secure_storage`에 저장 + 401 시 자동 refresh 인터셉터 (dio Interceptor).
+  - 백엔드 base URL: Android 에뮬레이터 `http://10.0.2.2:8080`, iOS 시뮬레이터 `http://localhost:8080`. 환경별 분기는 `--dart-define=API_BASE_URL=...` 권장.
+  - 카메라 권한: Android `tenk_app/android/app/src/main/AndroidManifest.xml`, iOS `tenk_app/ios/Runner/Info.plist`에 `NSCameraUsageDescription` 추가.
 
 ### 2. 카카오 앱 ID 박고 실제 로그인 흐름 검증
 - `application.yaml`의 `tenk.auth.kakao.app-id`를 실제 카카오 앱 ID(숫자)로 교체.

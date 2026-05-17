@@ -5,7 +5,7 @@
 ## 리포 구조 (모노레포)
 
 - [tenk-backend/](tenk-backend/) — Spring Boot REST API (Java 21, MariaDB, JWT)
-- [tenk-app/](tenk-app/) — Flutter 모바일 앱 (iOS/Android, *스캐폴딩 전*)
+- [tenk_app/](tenk_app/) — Flutter 모바일 앱 (iOS/Android)
 - [docs/](docs/) — 핸드오프·DB 스키마 등 공통 문서
 
 자세한 작업 가이드는 [CLAUDE.md](CLAUDE.md), 진행 상태는 [docs/handoff.md](docs/handoff.md) 참고.
