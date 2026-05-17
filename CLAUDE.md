@@ -3,20 +3,49 @@
 이 문서는 새 세션이 시작될 때 Claude가 자동으로 읽는 프로젝트 컨텍스트야.
 다른 컴퓨터에서 작업을 이어갈 때 가장 먼저 이 파일을 참고할 것.
 
-> **이 문서를 갱신하는 규칙**: 코드/스키마/설정/도메인 규칙을 수정했을 때 이 문서와 어긋나거나 새로 적어둘 사항이 생기면 **같은 PR/커밋 안에서 이 문서도 함께 갱신**할 것. 일시적인 진행 상태는 [docs/handoff.md](docs/handoff.md)에, 영구적인 규칙·구조·결정은 여기에.
+> **이 문서를 갱신하는 규칙**: 다음 중 하나라도 발생하면 **같은 PR/커밋(또는 동일 대화 턴) 안에서 이 문서도 함께 갱신**할 것.
+> - 코드/스키마/설정/도메인 규칙을 수정했고 이 문서와 어긋나거나 새로 적어둘 사항이 생긴 경우
+> - **요구사항·기술 스택·아키텍처 결정이 추가·변경된 경우** (예: 클라이언트 프레임워크 결정, 새 외부 의존성 도입, 인증·저장소 방식 변경, 핵심 도메인 정책 변경)
+> - 위 결정을 대화에서 합의했지만 아직 코드에 반영되지 않은 경우에도, 결정 자체는 이 문서에 먼저 박아둘 것
+>
+> 일시적인 진행 상태는 [docs/handoff.md](docs/handoff.md)에, 영구적인 규칙·구조·결정은 여기에.
 
 ---
 
 ## 프로젝트 개요
 
 - **서비스 컨셉**: "만원 챌린지" — 짧은 영상으로 지출/무지출을 기록하고, 챌린지 기간(최대 7일) 내 목표 금액 안에서 소비하기.
-- **대상 클라이언트**: **모바일 앱(iOS/Android)**. 브라우저 기반 흐름(서버 사이드 OAuth redirect, 세션 쿠키 등) 대신 모바일 친화적인 토큰 기반 흐름을 사용. 모든 백엔드 변경은 이 전제를 깔고 갈 것.
-- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 카카오 키·DB 연동·통합테스트는 미수행.
+- **대상 클라이언트**: **Flutter 기반 모바일 앱(iOS/Android 단일 코드베이스)**. 브라우저 기반 흐름(서버 사이드 OAuth redirect, 세션 쿠키 등) 대신 모바일 친화적인 토큰 기반 흐름을 사용. 모든 백엔드 변경은 이 전제를 깔고 갈 것.
+  - 카카오 로그인: 공식 `kakao_flutter_sdk`로 access token 발급 후 백엔드 `/api/auth/kakao/login`에 전달.
+  - 영상 녹화: Flutter `camera` 패키지의 **`ResolutionPreset.low` + 2초 타이머**로 처음부터 저화질·짧게 촬영. ffmpeg 등 후처리 트랜스코딩은 사용하지 않음.
+- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 카카오 키·DB 연동·통합테스트는 미수행. Flutter 앱은 아직 스캐폴딩 전.
+
+## 리포 구조 (모노레포)
+
+```
+tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
+├── CLAUDE.md, README.md
+├── docs/                   # 핸드오프·스키마 등 (현재는 backend-only)
+│   ├── handoff.md
+│   └── schema.sql
+├── tenk-backend/           # Spring Boot 백엔드 (Gradle 루트)
+│   ├── src/main/java/com/hjson/tenk/...
+│   ├── build.gradle, settings.gradle
+│   ├── gradlew, gradlew.bat, gradle/
+│   └── uploads/            # gitignored, 런타임 영상 저장 (`tenk.upload.base-dir` 기본값)
+└── tenk-app/               # Flutter 모바일 앱 (iOS/Android 단일 코드베이스)
+```
+
+- 백엔드 명령(`gradlew`, 빌드, 실행)은 모두 **`tenk-backend/`에서 실행**.
+- Flutter 명령(`flutter pub get`, `flutter run`)은 모두 **`tenk-app/`에서 실행**.
+- DB 스키마(`mysql ... < docs/schema.sql`)는 **리포 루트에서 실행** (docs는 루트에 있음).
+- API 계약을 바꾸면 **백엔드와 앱을 같은 PR에서 함께 갱신**할 것 (모노레포 이점).
 
 ## 기술 스택
 
 | 영역 | 선택 |
 |---|---|
+| 클라이언트(모바일) | **Flutter (Dart)** — `kakao_flutter_sdk`, `camera` |
 | 언어/런타임 | Java 21 |
 | 프레임워크 | Spring Boot 4.0.6 |
 | 영속성 | Spring Data JPA + MariaDB |
@@ -41,9 +70,10 @@
 - **인증 요청**: 클라이언트가 `Authorization: Bearer <AT>` 헤더 부착. `JwtAuthenticationFilter`가 파싱 → `JwtPrincipal(userId)`를 `SecurityContext`에 주입.
 - **토큰 갱신**: `POST /api/auth/refresh { refreshToken }`. 사용된 RT는 즉시 `revoked=true`로 회전(rotation) 후 새 AT/RT 발급.
 - **로그아웃**: `POST /api/auth/logout` (AT 필요) → 해당 사용자의 모든 RT를 `revoked=true`. AT 자체는 만료 시까지 유효 (블랙리스트 없음). 회원 탈퇴 시에도 동일하게 RT 일괄 무효화.
+- **CORS**: **비활성화** (`SecurityConfig`에서 `cors.disable()`). Flutter 네이티브 앱(iOS/Android)만 호출하므로 브라우저 preflight 자체가 없음. 추후 Flutter Web 등 브라우저 클라이언트를 도입하면 `CorsConfigurationSource` 빈으로 origin/method/header를 명시 설정할 것.
 
 ### 영상
-- "저화질·2초" 변환은 **클라이언트 책임**. 백엔드는 업로드받은 파일을 그대로 저장.
+- 저화질·2초 영상은 **클라이언트가 처음부터 저화질·짧게 녹화**하는 방식 (사후 변환·트랜스코딩 아님). Flutter 기준 `camera` 패키지의 `ResolutionPreset.low` + 2초 타이머로 처리. 백엔드는 업로드받은 파일을 그대로 저장.
 - 저장소는 로컬 파일 시스템 (`tenk.upload.base-dir`, 기본 `./uploads`). `.gitignore`에 등록됨.
 
 ### 챌린지
@@ -70,7 +100,9 @@
 - **영상 내보내기(워터마크/오버레이)는 이번 범위에서 제외.**
 - 챌린지 결과는 **JSON 반환**만 함 (`GET /api/challenges/{id}/export`). 화면 구성은 클라이언트 몫.
 
-## 패키지 구조
+## 패키지 구조 (백엔드)
+
+루트: `tenk-backend/src/main/java/com/hjson/tenk/`
 
 ```
 com.hjson.tenk
@@ -110,22 +142,35 @@ com.hjson.tenk
 
 ## 로컬 실행 방법
 
+### 백엔드
+
 ```powershell
-# 1. DB 준비 (MariaDB)
+# 1. DB 준비 (MariaDB) — 리포 루트에서
 mysql -u root -p
 > CREATE DATABASE tenk DEFAULT CHARACTER SET utf8mb4;
 > CREATE USER 'tenk'@'localhost' IDENTIFIED BY '<your-pw>';
 > GRANT ALL ON tenk.* TO 'tenk'@'localhost';
 
-# 2. 스키마 적용 (ddl-auto=validate 이므로 필수)
+# 2. 스키마 적용 (ddl-auto=validate 이므로 필수) — 리포 루트에서
 mysql -u tenk -p tenk < docs/schema.sql
 
-# 3. application-local.yaml의 datasource.username/password를 본인 DB 계정으로 수정
+# 3. tenk-backend/src/main/resources/application-local.yaml의 datasource.username/password 본인 계정으로 수정
 
-# 4. 실행 (기본 active=local)
+# 4. 실행 (기본 active=local) — tenk-backend/ 디렉토리에서
+cd tenk-backend
 ./gradlew.bat bootRun
 # 브라우저: http://localhost:8080/swagger-ui.html
 ```
+
+### Flutter 앱
+
+```powershell
+cd tenk-app
+flutter pub get
+flutter run    # 연결된 디바이스/에뮬레이터에서 실행
+```
+
+> 안드로이드 에뮬레이터는 호스트 백엔드를 `http://10.0.2.2:8080`으로, iOS 시뮬레이터는 `http://localhost:8080`으로 호출.
 
 ## 위치별 책임 (요약)
 
