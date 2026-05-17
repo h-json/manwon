@@ -35,10 +35,10 @@ tenk:
       refresh-token-ttl: P14D
       issuer: tenk
     kakao:
-      # 카카오 디벨로퍼스의 REST API 키 = app client_id (access_token_info.app_id와 매칭 검증용)
-      app-id: ${KAKAO_APP_ID:0}
-      # 모바일 SDK가 access token을 발급받아오므로 server-side client-secret은 사실상 미사용.
-      # /v1/user/access_token_info 와 /v2/user/me 만 사용함.
+      # 카카오 디벨로퍼스 → 내 앱 → 요약 정보의 "앱 ID" (숫자). REST API/네이티브/JS 키와 다른 값.
+      # access_token_info 응답의 app_id 필드와 일치 검증해서 다른 앱 토큰을 차단한다.
+      # 네이티브 앱 키(영숫자)는 Flutter 측 KakaoSdk.init에서만 사용한다.
+      app-id: 1459747
 
 springdoc:
   swagger-ui:

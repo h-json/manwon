@@ -20,14 +20,16 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.hjson.tenk_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // 카카오 SDK 요구사항: minSdk 21 이상. flutter.minSdkVersion이 21이면 그대로 두고, 더 낮으면 21로 명시.
+        minSdk = maxOf(flutter.minSdkVersion, 21)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 카카오 SDK URL scheme `kakao{NATIVE_APP_KEY}`에 주입됨 (AndroidManifest.xml 참조).
+        // 키 갱신 시 이 값 + iOS Info.plist + lib/config/kakao_config.dart 세 곳 모두 교체.
+        manifestPlaceholders["kakaoNativeAppKey"] = "589078d3c7daa590c71d9a6e77080b18"
     }
 
     buildTypes {

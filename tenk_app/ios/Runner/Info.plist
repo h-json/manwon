@@ -24,6 +24,35 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+
+	<!-- 카카오 SDK: 카카오톡 앱 실행 가능 여부 조회 + 로그인 콜백 URL scheme -->
+	<!-- 키 갱신 시 build.gradle.kts manifestPlaceholders + lib/config/kakao_config.dart 같이 교체 -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaokompassauth</string>
+		<string>kakaolink</string>
+		<string>kakaotalk</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.hjson.tenk_app.kakao</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakao589078d3c7daa590c71d9a6e77080b18</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- 카메라 권한 (영상 녹화용) -->
+	<key>NSCameraUsageDescription</key>
+	<string>지출/무지출 기록 영상을 녹화하기 위해 카메라 권한이 필요합니다.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>지출/무지출 기록 영상 녹화 시 음성 녹음에 사용됩니다.</string>
+
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
