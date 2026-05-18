@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-18
+마지막 갱신: 2026-05-18 (오후 — Flutter 챌린지 CRUD 화면)
 
 ---
 
@@ -40,7 +40,8 @@
 - [x] CORS 비활성화 (Flutter 네이티브 앱만 대상)
 - [x] **백엔드 부팅 검증 (`./gradlew.bat bootRun` 통과)**. Spring Boot 4.0이 Jackson v2→v3로 올라가면서 `ObjectMapper` 패키지가 바뀐 이슈 발견·해결: `com.fasterxml.jackson.databind.ObjectMapper` → `tools.jackson.databind.ObjectMapper` (annotation `com.fasterxml.jackson.annotation.*`는 그대로). [JwtAuthenticationFilter](../tenk-backend/src/main/java/com/hjson/tenk/security/JwtAuthenticationFilter.java) + [SecurityConfig](../tenk-backend/src/main/java/com/hjson/tenk/security/SecurityConfig.java) 임포트만 갱신.
 - [x] Flutter 카카오 로그인 코드/설정 1차 구현 — 아래 "1. Flutter 앱 초기 구성" 참고.
-- [x] **카카오 로그인 안드로이드 매니페스트 클래스명 수정** — `com.kakao.sdk.flutter.AuthCodeCustomTabsActivity`(존재하지 않는 이름) → `com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity`(SDK 2.x 실제 클래스, 서브패키지 `.auth.` 주의). `tools:node="merge"`로 SDK가 이미 선언한 액티비티에 URL scheme intent-filter만 병합. `<manifest>`에 `xmlns:tools` 추가. [AndroidManifest.xml](../tenk_app/android/app/src/main/AndroidManifest.xml). 펍 캐시 SDK 매니페스트 + `AuthCodeHandlerActivity.kt`의 `onNewIntent` 로직 둘 다 cross-check 함.
+- [x] **카카오 로그인 안드로이드 매니페스트 클래스명 수정** — `com.kakao.sdk.flutter.AuthCodeCustomTabsActivity`(존재하지 않는 이름) → `com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity`(SDK 2.x 실제 클래스, 서브패키지 `.auth.` 주의). `tools:node="merge"`로 SDK가 이미 선언한 액티비티에 URL scheme intent-filter만 병합. `<manifest>`에 `xmlns:tools` 추가. [AndroidManifest.xml](../tenk_app/android/app/src/main/AndroidManifest.xml). 펍 캐시 SDK 매니페스트 + `AuthCodeHandlerActivity.kt`의 `onNewIntent` 로직 둘 다 cross-check 함. **에뮬레이터에서 끝까지 도는지 E2E 검증은 미수행** (사용자가 다음에 `flutter run` 콜드 부팅 후 확인 예정).
+- [x] **Flutter 챌린지 CRUD 화면** (2026-05-18 오후). 홈을 [ChallengeListScreen](../tenk_app/lib/presentation/challenge/challenge_list_screen.dart)으로 교체 (기존 `home/home_screen.dart` 삭제). [ChallengeCreateScreen](../tenk_app/lib/presentation/challenge/challenge_create_screen.dart)에서 시작/종료 DatePicker + 7일 제한 + 목표 금액 입력. [ChallengeDetailScreen](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart)에서 잔액·진행률 표시 + `awaitsFinalize`일 때 결과 확정 버튼 + 삭제. 데이터 레이어: [Challenge](../tenk_app/lib/data/challenge/challenge.dart) 모델 + [ChallengeApi](../tenk_app/lib/data/challenge/challenge_api.dart) (POST/GET/DELETE/finalize). 공통 에러 매핑 [api_error.dart](../tenk_app/lib/data/api/api_error.dart) — 백엔드 `ApiResponse.error.message`를 SnackBar에 그대로 노출. `main.dart`에 `ChallengeScope` InheritedWidget 추가. `flutter analyze` 0 issues.
 
 ## 남은 일 (우선순위 순)
 
@@ -55,21 +56,24 @@
   - 새 머신에서 빌드하거나 release 키스토어를 만들면 해당 키스토어 기준 해시도 별도로 추가 등록해야 함 (한 플랫폼에 여러 해시 등록 가능).
 - ✅ Android 네이티브: `network_security_config.xml`(10.0.2.2 cleartext 허용) + INTERNET/ACCESS_NETWORK_STATE 권한 + minSdk 21 보장.
 - ✅ iOS 네이티브 (Mac 없어서 빌드 미검증): LSApplicationQueriesSchemes + CFBundleURLSchemes + 카메라/마이크 권한 설명.
-- ✅ Dart 구조: `lib/config/{kakao_config,api_config}.dart` + `lib/data/api/{dio_client,auth_api,auth_interceptor}.dart` + `lib/data/auth/{auth_tokens,token_storage,auth_repository}.dart` + `lib/presentation/{login,home}/*` + `main.dart` 라우팅 (AuthScope InheritedWidget + _SessionGate). 401 시 단일 in-flight refresh + 1회 재시도, refresh 실패 시 자동 로그아웃.
+- ✅ Dart 구조: `lib/config/{kakao_config,api_config}.dart` + `lib/data/api/{dio_client,auth_api,auth_interceptor,api_error}.dart` + `lib/data/auth/{auth_tokens,token_storage,auth_repository}.dart` + `lib/data/challenge/{challenge,challenge_api}.dart` + `lib/presentation/{login,challenge}/*` + `main.dart` 라우팅 (AuthScope + ChallengeScope InheritedWidget + _SessionGate). 401 시 단일 in-flight refresh + 1회 재시도, refresh 실패 시 자동 로그아웃.
 - ✅ Android 에뮬레이터에서 앱 부팅 + 로그인 화면 진입 확인.
 - ✅ 안드로이드 매니페스트 Kakao 액티비티 클래스명 수정 완료 (위 "완료된 것" 마지막 항목).
 - ✅ E2E 통과: 카카오 로그인 → 백엔드 교환 → 홈 진입 (2026-05-18).
 - 🟡 남은 일:
-  - 카메라 권한 Android 매니페스트 추가 (카메라 기능 구현 시).
+  - **다음 세션 1순위: 지출 기록 화면 + 영상 녹화/업로드.** `camera` 패키지로 `ResolutionPreset.low` + 2초 타이머 녹화 → multipart 업로드 (`request` JSON + `video` 파일 2개 part)로 `POST /api/challenges/{id}/amounts` 호출. 무지출 토글이 켜진 경우 영상 선택, 꺼진 경우 필수. UI 상 ChallengeDetailScreen 하단 placeholder를 "지출 기록하기 / 무지출 기록하기" 버튼 + 기록 리스트로 교체.
+  - 카메라 권한 Android 매니페스트 추가 (`<uses-permission android:name="android.permission.CAMERA"/>` + `<uses-feature>`).
   - 실기기 테스트: 같은 Wi-Fi의 PC IP를 `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 주입.
   - (참고) 동의 화면에 "맞춤형 광고 행태정보 처리" 항목이 보임 — 카카오 플랫폼 강제 항목이라 개발자가 끌 수 없음. 한 번 선택하면 다음 로그인부터 안 뜸. 우리 백엔드는 무관.
 
 ### 2. 백엔드 인증 흐름 추가 검증 (E2E 통과 후)
 - ✅ 앱 ID 박힘 (1459747), 백엔드 부팅 OK.
 - ✅ Flutter 카카오 로그인 → 백엔드 교환 → AT/RT 발급 → 홈 진입 동선 통과 (2026-05-18).
-- 🟡 별도 검증 필요 (앱에서 자동 발생하기 어려움, Swagger UI나 curl 권장):
-  - `POST /api/auth/refresh`로 RT 회전 — 기존 RT가 두 번째 호출에서 401 되는지.
-  - `POST /api/auth/logout` 후 모든 RT 무효화되는지.
+- 🟡 별도 검증 필요 (앱에서 자동 발생하기 어려움). **Swagger UI 시나리오** — `http://localhost:8080/swagger-ui.html`에서 Authorize 버튼에 `Bearer <AT>` 입력 후 진행:
+  1. **RT 회전 정상**: `/api/auth/kakao/login`으로 받은 RT₁을 `/api/auth/refresh`에 한 번 호출 → 200 + AT₂/RT₂ 응답. 같은 RT₁로 두 번째 `/refresh` → **401**(`AUTH_REFRESH_TOKEN_INVALID`)이 떠야 정상. RT₂로 호출하면 또 회전 → AT₃/RT₃.
+  2. **logout RT 일괄 무효화**: AT(아무거나 살아있는 것)로 `/api/auth/logout` 호출 → 200. 직전 가장 최신 RT로 `/refresh` 시도 → **401**. DB에서 `select revoked, count(*) from refresh_token where user_id = ? group by revoked` 했을 때 그 사용자 RT 전부 `revoked=1`인지.
+  3. **만료 AT는 401 + 코드 구분**: AT 유효 기간이 1시간이라 그냥은 만료 안 됨. 빠르게 확인하려면 `application-local.yaml`에 임시로 `tenk.auth.jwt.access-token-ttl: PT10S` 박고 재부팅 → 로그인 후 10초 대기 → 보호 자원 호출 → 401 + `error.code = AUTH_TOKEN_EXPIRED`(`AUTH_TOKEN_INVALID`가 아니라). 확인 끝나면 TTL 원복.
+  4. **stateless AT의 의도된 제약**: logout 후에도 AT 자체는 만료 시간(1시간)까지 유효 — 즉시 무효화 필요하면 RT만 revoke해도 다음 갱신 시 거부됨. 이게 의도된 동작 ([../CLAUDE.md](../CLAUDE.md) 인증 섹션 참고).
 
 ### 3. JWT secret 운영 키 정비 ✅
 - ✅ 공통 `application.yaml`에서 jwt secret 제거 — fallback이 있으면 prod에 dev 키가 새어나갈 위험이라 의도적으로 비움.

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../main.dart' show AuthScope;
-import '../home/home_screen.dart';
+import '../challenge/challenge_list_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthScope.of(context).loginWithKakao();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+        MaterialPageRoute<void>(builder: (_) => const ChallengeListScreen()),
         (_) => false,
       );
     } on PlatformException catch (e) {

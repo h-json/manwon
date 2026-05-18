@@ -7,7 +7,8 @@ import 'data/api/auth_api.dart';
 import 'data/api/dio_client.dart';
 import 'data/auth/auth_repository.dart';
 import 'data/auth/token_storage.dart';
-import 'presentation/home/home_screen.dart';
+import 'data/challenge/challenge_api.dart';
+import 'presentation/challenge/challenge_list_screen.dart';
 import 'presentation/login/login_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -23,8 +24,12 @@ void main() {
   );
   final authApi = AuthApi(rawDio: dioClient.rawDio, authDio: dioClient.authDio);
   final authRepository = AuthRepository(api: authApi, storage: storage);
+  final challengeApi = ChallengeApi(authDio: dioClient.authDio);
 
-  runApp(TenkApp(authRepository: authRepository));
+  runApp(TenkApp(
+    authRepository: authRepository,
+    challengeApi: challengeApi,
+  ));
 }
 
 Future<void> _goToLogin() async {
@@ -37,22 +42,30 @@ Future<void> _goToLogin() async {
 }
 
 class TenkApp extends StatelessWidget {
-  const TenkApp({super.key, required this.authRepository});
+  const TenkApp({
+    super.key,
+    required this.authRepository,
+    required this.challengeApi,
+  });
 
   final AuthRepository authRepository;
+  final ChallengeApi challengeApi;
 
   @override
   Widget build(BuildContext context) {
     return AuthScope(
       repository: authRepository,
-      child: MaterialApp(
-        title: 'Tenk',
-        navigatorKey: navigatorKey,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFEE500)),
-          useMaterial3: true,
+      child: ChallengeScope(
+        api: challengeApi,
+        child: MaterialApp(
+          title: 'Tenk',
+          navigatorKey: navigatorKey,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFEE500)),
+            useMaterial3: true,
+          ),
+          home: const _SessionGate(),
         ),
-        home: const _SessionGate(),
       ),
     );
   }
@@ -86,7 +99,9 @@ class _SessionGateState extends State<_SessionGate> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        return snapshot.data == true ? const HomeScreen() : const LoginScreen();
+        return snapshot.data == true
+            ? const ChallengeListScreen()
+            : const LoginScreen();
       },
     );
   }
@@ -111,4 +126,24 @@ class AuthScope extends InheritedWidget {
   @override
   bool updateShouldNotify(AuthScope oldWidget) =>
       repository != oldWidget.repository;
+}
+
+/// 트리 어디서든 [ChallengeApi]를 꺼내쓰기 위한 단순 InheritedWidget.
+class ChallengeScope extends InheritedWidget {
+  const ChallengeScope({
+    super.key,
+    required this.api,
+    required super.child,
+  });
+
+  final ChallengeApi api;
+
+  static ChallengeApi of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<ChallengeScope>();
+    assert(scope != null, 'ChallengeScope not found in widget tree');
+    return scope!.api;
+  }
+
+  @override
+  bool updateShouldNotify(ChallengeScope oldWidget) => api != oldWidget.api;
 }
