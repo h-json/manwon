@@ -1,7 +1,6 @@
 plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.0.6'
-	id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'com.hjson'
@@ -18,6 +17,16 @@ repositories {
 }
 
 dependencies {
+	def springBootBom = platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
+	implementation springBootBom
+	annotationProcessor springBootBom
+	compileOnly springBootBom
+	runtimeOnly springBootBom
+	testImplementation springBootBom
+	testCompileOnly springBootBom
+	testAnnotationProcessor springBootBom
+	testRuntimeOnly springBootBom
+
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
