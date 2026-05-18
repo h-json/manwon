@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app/scopes.dart';
 import '../../data/api/api_error.dart';
 import '../../data/challenge/challenge.dart';
-import '../../main.dart' show ChallengeScope;
 import '_formatters.dart';
 
 class ChallengeCreateScreen extends StatefulWidget {

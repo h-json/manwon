@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-18 (오후 — Flutter 챌린지 CRUD 화면)
+마지막 갱신: 2026-05-19 (Flutter 구조 정비: app/ 셸 + AsyncState 추출)
 
 ---
 
@@ -47,6 +47,15 @@
 - [x] Flutter 카카오 로그인 코드/설정 1차 구현 — 아래 "1. Flutter 앱 초기 구성" 참고.
 - [x] **카카오 로그인 안드로이드 매니페스트 클래스명 수정** — `com.kakao.sdk.flutter.AuthCodeCustomTabsActivity`(존재하지 않는 이름) → `com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity`(SDK 2.x 실제 클래스, 서브패키지 `.auth.` 주의). `tools:node="merge"`로 SDK가 이미 선언한 액티비티에 URL scheme intent-filter만 병합. `<manifest>`에 `xmlns:tools` 추가. [AndroidManifest.xml](../tenk_app/android/app/src/main/AndroidManifest.xml). 펍 캐시 SDK 매니페스트 + `AuthCodeHandlerActivity.kt`의 `onNewIntent` 로직 둘 다 cross-check 함. **에뮬레이터에서 끝까지 도는지 E2E 검증은 미수행** (사용자가 다음에 `flutter run` 콜드 부팅 후 확인 예정).
 - [x] **Flutter 챌린지 CRUD 화면** (2026-05-18 오후). 홈을 [ChallengeListScreen](../tenk_app/lib/presentation/challenge/challenge_list_screen.dart)으로 교체 (기존 `home/home_screen.dart` 삭제). [ChallengeCreateScreen](../tenk_app/lib/presentation/challenge/challenge_create_screen.dart)에서 시작/종료 DatePicker + 7일 제한 + 목표 금액 입력. [ChallengeDetailScreen](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart)에서 잔액·진행률 표시 + `awaitsFinalize`일 때 결과 확정 버튼 + 삭제. 데이터 레이어: [Challenge](../tenk_app/lib/data/challenge/challenge.dart) 모델 + [ChallengeApi](../tenk_app/lib/data/challenge/challenge_api.dart) (POST/GET/DELETE/finalize). 공통 에러 매핑 [api_error.dart](../tenk_app/lib/data/api/api_error.dart) — 백엔드 `ApiResponse.error.message`를 SnackBar에 그대로 노출. `main.dart`에 `ChallengeScope` InheritedWidget 추가. `flutter analyze` 0 issues.
+- [x] **Flutter 구조 정비** (2026-05-18 저녁). MVP 직전 정리 — 도메인이 늘기 전에 반복 boilerplate 위치를 결정해 둠. 컨벤션은 [../CLAUDE.md](../CLAUDE.md) "패키지 구조 (Flutter 앱)" + "코딩 컨벤션 — Flutter" 참고. 변경:
+  - `lib/app/` 셸 도입: [scopes.dart](../tenk_app/lib/app/scopes.dart)(AuthScope/ChallengeScope) + [session_gate.dart](../tenk_app/lib/app/session_gate.dart) + [navigator_key.dart](../tenk_app/lib/app/navigator_key.dart). [main.dart](../tenk_app/lib/main.dart)는 composition root만 남음. 화면들이 `import '../../main.dart' show ...`로 Scope를 꺼내던 순환 import 냄새 제거.
+  - [presentation/common/async_state.dart](../tenk_app/lib/presentation/common/async_state.dart) — `AsyncStateMixin<W,T>` + `AsyncStateView<T>`. 명시적 state 패턴(_loading/_data/_error/_loadGen)을 한 곳에 캡슐화. `FutureBuilder` 금지 규칙은 이걸로 강제. `replaceData(next)`로 외부 동작 결과(예: finalize 응답)를 즉시 반영.
+  - [presentation/common/error_view.dart](../tenk_app/lib/presentation/common/error_view.dart) — list/detail에서 복붙되던 ErrorView를 단일 위젯으로.
+  - [presentation/challenge/widgets/challenge_status.dart](../tenk_app/lib/presentation/challenge/widgets/challenge_status.dart) — `ChallengeStatusChip` + `ChallengeStatusBanner`. 상태→라벨/색 매핑이 양쪽에 중복돼 있던 것 통합.
+  - [data/api/api_response.dart](../tenk_app/lib/data/api/api_response.dart) — `unwrapData` / `unwrapList`. 도메인 Api마다 복붙되던 envelope 풀이 헬퍼 추출.
+  - [challenge_detail_screen.dart](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart)가 `FutureBuilder`를 쓰고 있어 CLAUDE.md 규칙을 위반했었음 → `AsyncStateMixin`으로 통일.
+  - **Repository 패턴은 강제하지 않음**: 단일 백엔드 호출만 하는 도메인(challenge)은 `*_api.dart`만으로 충분. AuthRepository처럼 *여러 출처를 합칠 때만* repository를 만든다 — 컨벤션 명문화.
+  - `flutter analyze` 0 issues. E2E 동작 변경 없음.
 
 ## 남은 일 (우선순위 순)
 
@@ -61,7 +70,7 @@
   - 새 머신에서 빌드하거나 release 키스토어를 만들면 해당 키스토어 기준 해시도 별도로 추가 등록해야 함 (한 플랫폼에 여러 해시 등록 가능).
 - ✅ Android 네이티브: `network_security_config.xml`(10.0.2.2 cleartext 허용) + INTERNET/ACCESS_NETWORK_STATE 권한 + minSdk 21 보장.
 - ✅ iOS 네이티브 (Mac 없어서 빌드 미검증): LSApplicationQueriesSchemes + CFBundleURLSchemes + 카메라/마이크 권한 설명.
-- ✅ Dart 구조: `lib/config/{kakao_config,api_config}.dart` + `lib/data/api/{dio_client,auth_api,auth_interceptor,api_error}.dart` + `lib/data/auth/{auth_tokens,token_storage,auth_repository}.dart` + `lib/data/challenge/{challenge,challenge_api}.dart` + `lib/presentation/{login,challenge}/*` + `main.dart` 라우팅 (AuthScope + ChallengeScope InheritedWidget + _SessionGate). 401 시 단일 in-flight refresh + 1회 재시도, refresh 실패 시 자동 로그아웃.
+- ✅ Dart 구조 ([../CLAUDE.md](../CLAUDE.md) "패키지 구조 (Flutter 앱)" 참고): `lib/main.dart`(composition root) + `lib/app/{scopes,session_gate,navigator_key}.dart`(앱 셸) + `lib/config/` + `lib/data/api/{dio_client,auth_interceptor,auth_api,api_response,api_error}.dart` + `lib/data/{auth,challenge}/*` + `lib/presentation/common/{async_state,error_view}.dart` + `lib/presentation/{login,challenge}/*`. 401 시 단일 in-flight refresh + 1회 재시도, refresh 실패 시 자동 로그아웃.
 - ✅ Android 에뮬레이터에서 앱 부팅 + 로그인 화면 진입 확인.
 - ✅ 안드로이드 매니페스트 Kakao 액티비티 클래스명 수정 완료 (위 "완료된 것" 마지막 항목).
 - ✅ E2E 통과: 카카오 로그인 → 백엔드 교환 → 홈 진입 (2026-05-18).
@@ -119,8 +128,7 @@
 - **`JwtAuthenticationFilter`에서 토큰 invalid/expired는 401을 직접 응답한다** (Bearer 헤더가 *있을 때만*). 헤더가 아예 없으면 그대로 통과시키고 `AuthenticationEntryPoint`가 401 처리. 보호 자원에서 만료 토큰이 401로 떨어지면 클라이언트는 RT로 refresh를 시도해야 함.
 - **AT는 stateless** — 로그아웃해도 AT 만료 시간까지 유효. 즉시 무효화가 필요하면 RT만 revoke해도 보통은 충분 (다음 갱신 시 거부됨).
 
-### Flutter
-- **목록/상세 화면의 비동기 데이터는 FutureBuilder 대신 명시적 state 패턴 사용** ([ChallengeListScreen](../tenk_app/lib/presentation/challenge/challenge_list_screen.dart) 참고). `List<T>? _items / Object? _loadError / bool _loading + int _loadGen` 4-튜플 + setState. 이유: FutureBuilder가 일부 케이스에서 새 future로 교체돼도 stale snapshot으로 그리는 동작이 있어 챌린지 생성/삭제 후 갱신이 누락됐었음. 새 화면도 같은 패턴 권장.
+- **목록/상세 화면의 비동기 데이터는 `AsyncStateMixin` + `AsyncStateView` 사용**, `FutureBuilder` 금지 ([presentation/common/async_state.dart](../tenk_app/lib/presentation/common/async_state.dart) 참고). 이유: FutureBuilder가 일부 케이스에서 새 future로 교체돼도 stale snapshot으로 그리는 동작이 있어 챌린지 생성/삭제 후 갱신이 누락됐었음. mixin이 `_loading/_data/_error/_loadGen` 4-튜플 + stale-response 가드를 한 곳에 캡슐화한다. 외부 동작 결과(예: finalize 응답)를 즉시 반영할 땐 `replaceData(next)` — `reload()` 한 번 더 돌릴 필요 없음. **한 화면이 두 종류 이상의 비동기 자원을 다루면 mixin 대신 직접 state를 들 것** (mixin은 자원 1개 가정).
 - **Navigator push/pop의 generic은 양쪽 모두 명시.** `MaterialPageRoute<T>(builder: ...)`로 T를 박지 않으면 push의 result가 null로 빠지는 경우가 있음. 그리고 push 종료 시점에 무조건 refresh하는 패턴이 안전 (result 의존하지 말 것).
 - **에뮬레이터에서 텍스트가 첫 프레임에 안 보이고 화면을 움직이면 나타나면** [[reference-flutter-android-impeller-text-glitch]] 참고 — Impeller 텍스트 atlas 버그. `flutter run --no-enable-impeller`로 검증.
 - **매니페스트(`AndroidManifest.xml`) 변경은 hot reload로 반영 안 됨.** 항상 콜드 부팅(`q` → `flutter run`) 또는 hot restart(`R`)로 다시 띄울 것.

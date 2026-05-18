@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../auth/auth_tokens.dart';
+import 'api_response.dart';
 
 /// 백엔드 `/api/auth/*` 엔드포인트 호출.
 ///
@@ -21,18 +22,10 @@ class AuthApi {
       '/api/auth/kakao/login',
       data: {'accessToken': kakaoAccessToken},
     );
-    return AuthTokens.fromJson(_unwrapData(res.data));
+    return AuthTokens.fromJson(unwrapData(res.data));
   }
 
   Future<void> logout() async {
     await _authDio.post('/api/auth/logout');
-  }
-
-  /// 백엔드 공통 응답 envelope `{ success, data, error }`에서 `data` 추출.
-  static Map<String, dynamic> _unwrapData(dynamic body) {
-    final map = body as Map<String, dynamic>;
-    final data = map['data'];
-    if (data is Map<String, dynamic>) return data;
-    throw const FormatException('Unexpected ApiResponse envelope: missing data');
   }
 }

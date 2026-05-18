@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../app/scopes.dart';
 import '../../data/api/api_error.dart';
 import '../../data/challenge/challenge.dart';
-import '../../main.dart' show ChallengeScope;
+import '../common/async_state.dart';
 import '_formatters.dart';
+import 'widgets/challenge_status.dart';
 
 class ChallengeDetailScreen extends StatefulWidget {
   const ChallengeDetailScreen({super.key, required this.challengeId});
@@ -14,41 +16,31 @@ class ChallengeDetailScreen extends StatefulWidget {
   State<ChallengeDetailScreen> createState() => _ChallengeDetailScreenState();
 }
 
-class _ChallengeDetailScreenState extends State<ChallengeDetailScreen> {
-  Future<Challenge>? _future;
+class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
+    with AsyncStateMixin<ChallengeDetailScreen, Challenge> {
   bool _changed = false;
   bool _busy = false;
 
   @override
+  Future<Challenge> fetch() =>
+      ChallengeScope.of(context).getOne(widget.challengeId);
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _future ??= _load();
-  }
-
-  Future<Challenge> _load() {
-    return ChallengeScope.of(context).getOne(widget.challengeId);
-  }
-
-  Future<void> _refresh() async {
-    final next = _load();
-    setState(() => _future = next);
-    // RefreshIndicator는 이 future가 끝나야 인디케이터를 닫는다.
-    // 에러 표시는 FutureBuilder가 처리하므로 여기선 삼킨다.
-    try {
-      await next;
-    } catch (_) {}
+    ensureLoaded();
   }
 
   Future<void> _finalize() async {
     setState(() => _busy = true);
     try {
-      await ChallengeScope.of(context).finalize(widget.challengeId);
+      final next = await ChallengeScope.of(context).finalize(widget.challengeId);
       _changed = true;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('결과가 확정됐어요.')),
       );
-      setState(() => _future = _load());
+      replaceData(next);
     } catch (e) {
       if (!mounted) return;
       final msg = toApiException(e).message;
@@ -113,26 +105,17 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen> {
           ],
         ),
         body: RefreshIndicator(
-          onRefresh: _refresh,
-          child: FutureBuilder<Challenge>(
-            future: _future,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return _ErrorView(
-                  message: toApiException(snapshot.error!).message,
-                  onRetry: _refresh,
-                );
-              }
-              final challenge = snapshot.data!;
-              return _DetailBody(
-                challenge: challenge,
-                busy: _busy,
-                onFinalize: challenge.awaitsFinalize ? _finalize : null,
-              );
-            },
+          onRefresh: reload,
+          child: AsyncStateView<Challenge>(
+            data: data,
+            error: error,
+            loading: loading,
+            onRetry: reload,
+            builder: (_, challenge) => _DetailBody(
+              challenge: challenge,
+              busy: _busy,
+              onFinalize: challenge.awaitsFinalize ? _finalize : null,
+            ),
           ),
         ),
       ),
@@ -161,7 +144,7 @@ class _DetailBody extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(24),
       children: [
-        _StatusBanner(challenge: challenge),
+        ChallengeStatusBanner(challenge: challenge),
         const SizedBox(height: 24),
         Text(
           formatPeriod(challenge.startDt, challenge.endDt),
@@ -231,81 +214,6 @@ class _DetailBody extends StatelessWidget {
               '지출 기록 / 영상 녹화 UI는 다음 단계에서 추가될 예정.',
               style: theme.textTheme.bodySmall,
               textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.challenge});
-
-  final Challenge challenge;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final (label, color) = switch (challenge) {
-      Challenge(result: ChallengeResult.success) =>
-        ('성공', theme.colorScheme.primary),
-      Challenge(result: ChallengeResult.fail) => ('실패', theme.colorScheme.error),
-      Challenge(awaitsFinalize: true) => ('결과 확정 대기', theme.colorScheme.tertiary),
-      _ => ('진행 중', theme.colorScheme.secondary),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.circle, size: 8, color: color),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 120),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              children: [
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 15, height: 1.5),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.tonal(
-                  onPressed: onRetry,
-                  child: const Text('다시 시도'),
-                ),
-              ],
             ),
           ),
         ),

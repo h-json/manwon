@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../api/api_response.dart';
 import 'challenge.dart';
 
 /// 백엔드 `/api/challenges/*` 호출. 모두 인증 필요 → [_dio]는 인터셉터가 부착된 authDio.
@@ -21,7 +22,7 @@ class ChallengeApi {
         'targetAmount': targetAmount,
       },
     );
-    return Challenge.fromJson(_unwrapData(res.data));
+    return Challenge.fromJson(unwrapData(res.data));
   }
 
   Future<List<Challenge>> list({bool activeOnly = false}) async {
@@ -29,37 +30,23 @@ class ChallengeApi {
       '/api/challenges',
       queryParameters: {'activeOnly': activeOnly},
     );
-    return _unwrapList(res.data)
+    return unwrapList(res.data)
         .map(Challenge.fromJson)
         .toList(growable: false);
   }
 
   Future<Challenge> getOne(int challengeId) async {
     final res = await _dio.get('/api/challenges/$challengeId');
-    return Challenge.fromJson(_unwrapData(res.data));
+    return Challenge.fromJson(unwrapData(res.data));
   }
 
   Future<Challenge> finalize(int challengeId) async {
     final res = await _dio.post('/api/challenges/$challengeId/finalize');
-    return Challenge.fromJson(_unwrapData(res.data));
+    return Challenge.fromJson(unwrapData(res.data));
   }
 
   Future<void> delete(int challengeId) async {
     await _dio.delete('/api/challenges/$challengeId');
-  }
-
-  static Map<String, dynamic> _unwrapData(dynamic body) {
-    final map = body as Map<String, dynamic>;
-    final data = map['data'];
-    if (data is Map<String, dynamic>) return data;
-    throw const FormatException('Unexpected ApiResponse envelope: missing data');
-  }
-
-  static List<Map<String, dynamic>> _unwrapList(dynamic body) {
-    final map = body as Map<String, dynamic>;
-    final data = map['data'];
-    if (data is List) return data.cast<Map<String, dynamic>>();
-    throw const FormatException('Unexpected ApiResponse envelope: missing list');
   }
 
   /// 백엔드의 LocalDateTime은 타임존 없는 ISO-8601 string을 기대한다.

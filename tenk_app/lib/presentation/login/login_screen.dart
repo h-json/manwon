@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../main.dart' show AuthScope;
+import '../../app/scopes.dart';
 import '../challenge/challenge_list_screen.dart';
 
 class LoginScreen extends StatefulWidget {

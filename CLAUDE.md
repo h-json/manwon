@@ -18,7 +18,7 @@
 - **대상 클라이언트**: **Flutter 기반 모바일 앱(iOS/Android 단일 코드베이스)**. 브라우저 기반 흐름(서버 사이드 OAuth redirect, 세션 쿠키 등) 대신 모바일 친화적인 토큰 기반 흐름을 사용. 모든 백엔드 변경은 이 전제를 깔고 갈 것.
   - 카카오 로그인: 공식 `kakao_flutter_sdk`로 access token 발급 후 백엔드 `/api/auth/kakao/login`에 전달.
   - 영상 녹화: Flutter `camera` 패키지의 **`ResolutionPreset.low` + 2초 타이머**로 처음부터 저화질·짧게 촬영. ffmpeg 등 후처리 트랜스코딩은 사용하지 않음.
-- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 카카오 키·DB 연동·통합테스트는 미수행. Flutter 앱은 아직 스캐폴딩 전.
+- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 통합테스트는 미수행. Flutter 앱은 카카오 로그인 + 챌린지 CRUD 화면까지 완료 (지출 기록 / 영상 녹화 화면은 다음 단계).
 
 ## 리포 구조 (모노레포)
 
@@ -128,7 +128,49 @@ com.hjson.tenk
     └── badge/       (Badge, UserBadge, BadgeGrantService, BadgeEventListener, BadgeScheduler)
 ```
 
-## 코딩 컨벤션
+## 패키지 구조 (Flutter 앱)
+
+루트: `tenk_app/lib/`
+
+```
+lib/
+├── main.dart                   # composition root만. 의존성 조립 + Scope 주입 + MaterialApp
+├── app/                        # 앱 셸: 라우팅 진입점, 전역 DI, 네비게이터 키
+│   ├── navigator_key.dart        # 위젯 트리 밖(예: dio interceptor)에서 라우터 접근용
+│   ├── scopes.dart               # AuthScope / ChallengeScope / ... (InheritedWidget DI)
+│   └── session_gate.dart         # 토큰 유무에 따라 홈/로그인 분기
+├── config/                     # 컴파일 타임 상수 (API base URL, 카카오 키)
+├── data/                       # 모든 외부 통신·영속성. 화면에서 직접 import 금지 — Scope를 거쳐서만
+│   ├── api/                      # 전송 계층 공용
+│   │   ├── dio_client.dart         # rawDio(인증X) + authDio(401 회전 인터셉터 부착)
+│   │   ├── auth_interceptor.dart   # single-flight refresh + 1회 재시도
+│   │   ├── api_response.dart       # 백엔드 envelope `{success,data,error}` 헬퍼
+│   │   ├── api_error.dart          # 서버 에러 → ApiException 변환
+│   │   └── auth_api.dart           # /api/auth/* HTTP 호출만
+│   ├── auth/                     # 도메인 폴더: 모델 + (필요시) repository + storage
+│   │   ├── auth_tokens.dart, token_storage.dart, auth_repository.dart
+│   └── challenge/                # 도메인 폴더: 모델 + api (지금은 repo 불필요)
+│       ├── challenge.dart, challenge_api.dart
+└── presentation/               # 화면. data 레이어를 Scope로만 호출
+    ├── common/                   # 도메인 무관 공용 위젯·헬퍼
+    │   ├── async_state.dart        # AsyncStateMixin + AsyncStateView (필수 — 아래 컨벤션 참고)
+    │   └── error_view.dart
+    ├── login/login_screen.dart
+    └── challenge/
+        ├── _formatters.dart        # 도메인 내부 공유 (외부 노출 X — 언더스코어 prefix)
+        ├── widgets/                # 도메인 전용 공용 위젯
+        │   └── challenge_status.dart
+        └── *_screen.dart
+```
+
+### 레이어 규칙 (반드시 지킬 것)
+- **`presentation/`에서 `data/api/*Api`를 직접 import 금지.** 항상 `Scope.of(context)`를 거쳐서만 접근. composition root(`main.dart`)에서 주입된 인스턴스만 화면이 본다.
+- **`data/`에서 `presentation/` import 금지.** 단방향 의존성.
+- **Repository 패턴은 강제하지 않음**: 하나의 도메인이 *여러 출처*(예: 외부 SDK + 백엔드 + storage)를 합쳐야 할 때만 `*_repository.dart`를 만든다. 단일 백엔드 호출만 하는 도메인은 `*_api.dart`만으로 충분. (예: [auth_repository.dart](tenk_app/lib/data/auth/auth_repository.dart)는 카카오 SDK + AuthApi + TokenStorage 3개를 합치므로 가치 있음. challenge는 아직 api만으로 충분.)
+- **Scope는 도메인별로 하나씩** `app/scopes.dart`에 추가. Scope 개수가 5개를 넘기는 시점에 Riverpod/Provider 도입을 재검토 (지금은 boilerplate가 그만한 비용을 정당화하지 못함).
+- **새 화면 코드가 `import '../../main.dart'` 하면 잘못된 방향.** Scope·SessionGate·navigatorKey는 모두 `app/`에 있다.
+
+## 코딩 컨벤션 — 백엔드
 
 - **컨트롤러는 얇게**, 비즈니스 로직은 서비스에. 엔티티는 정적 팩토리 메서드로 생성하고 invariant 검증.
 - **에러는 `BusinessException(ErrorCode.XXX)`로 던지기.** 새 케이스는 `ErrorCode` enum에 추가. 메시지는 한국어.
@@ -137,6 +179,17 @@ com.hjson.tenk
 - **사용자 ID 주입**: 컨트롤러 파라미터에 `@CurrentUserId Long userId` 사용. (내부적으로 `@AuthenticationPrincipal(expression="userId")`)
 - **댓글은 최소화.** "왜"가 비자명할 때만 작성. JavaDoc은 정책 문서 역할일 때만 (예: `BadgeGrantService` 상단).
 - **새 API를 만들 때**: `@Tag`, `@Operation` 어노테이션을 빠뜨리지 말 것 (Swagger).
+
+## 코딩 컨벤션 — Flutter
+
+- **화면의 비동기 로딩은 `AsyncStateMixin` + `AsyncStateView` 사용**. `FutureBuilder` 금지. 이유: `FutureBuilder`가 새 future로 교체돼도 stale snapshot으로 그리는 케이스가 있어 챌린지 생성/삭제 후 갱신이 누락된 적이 있음. mixin은 `_loading/_data/_error/_loadGen` 4-tuple과 stale-response 가드를 한 곳에 캡슐화한다. 한 화면이 두 종류 이상의 비동기 자원을 다루면 mixin 대신 직접 state를 들 것. ([presentation/common/async_state.dart](tenk_app/lib/presentation/common/async_state.dart))
+- **HTTP 응답은 항상 `unwrapData` / `unwrapList` 통과**. 백엔드 envelope 풀이 로직을 도메인마다 복붙하지 말 것. ([data/api/api_response.dart](tenk_app/lib/data/api/api_response.dart))
+- **에러는 SnackBar로 노출 시 `toApiException(e).message` 사용**. dio 에러·서버 에러·기타 예외를 일관된 한국어 메시지로 변환.
+- **모델은 immutable + `fromJson` 팩토리**. `@immutable` 어노테이션 + `final` 필드. JSON 키는 백엔드 응답 그대로 (snake/camel 변환 X).
+- **Navigator push/pop의 generic은 양쪽 모두 명시** (`push<T>(MaterialPageRoute<T>(...))`). push 결과에 의존하지 말고 push 종료 시점에 무조건 새로고침 — 결과 누락 케이스가 있음 ([docs/handoff.md](docs/handoff.md) "함정 — Flutter" 참고).
+- **위젯 중복은 즉시 추출**: 두 화면이 같은 위젯을 쓰면 도메인 위젯은 `presentation/<domain>/widgets/`, 도메인 무관 공용 위젯은 `presentation/common/`에. 화면 파일 안에 `_PrivateView` 클래스로 두는 건 그 화면에서만 쓸 때.
+- **백엔드의 LocalDateTime 전송은 `Z` 없는 ISO-8601 직접 포맷**. `DateTime.toIso8601String()`은 UTC 변환 시 `Z`가 붙어 백엔드 LocalDateTime 파서를 깨뜨림 ([challenge_api.dart](tenk_app/lib/data/challenge/challenge_api.dart) `_formatLocal` 참고).
+- **댓글은 최소화.** "왜"가 비자명할 때만 (예: dio 2개 인스턴스 이유, `_loadGen` 세대 카운터 이유, hide 키워드로 카카오 SDK `AuthApi` 가리기).
 
 ## 환경 설정 / 프로파일
 
@@ -190,8 +243,9 @@ flutter run    # 연결된 디바이스/에뮬레이터에서 실행
 | 파일 업로드 | 항상 `LocalFileStorage.store(file, subdir)`을 거치기. 경로를 직접 조립하지 말 것 |
 | 환경별로 다른 값 추가 | 공통은 `application.yaml`, 환경별 override는 `application-{local,prod}.yaml`. prod placeholder는 TODO 주석 유지 |
 | 보호된 신규 엔드포인트 추가 | 기본적으로 인증 필요 (`SecurityConfig.PERMIT_ALL`에 없으면 자동 보호). 컨트롤러는 `@CurrentUserId Long userId`로 사용자 식별 |
-| Flutter 새 도메인 추가 | 데이터: `lib/data/<feature>/<feature>.dart`(모델, `fromJson`) + `<feature>_api.dart`(authDio 주입). 화면: `lib/presentation/<feature>/<feature>_screen.dart`. 의존성은 `main.dart`의 `*Scope` InheritedWidget으로. 백엔드 LocalDateTime은 타임존 없는 ISO-8601 문자열로 직접 포맷(toIso8601String의 Z 회피) |
-| Flutter 새 화면의 비동기 로딩 | FutureBuilder 대신 명시적 state 패턴 (`List<T>?`/`Object?`/`bool` + `int _loadGen`). 이유는 [docs/handoff.md](docs/handoff.md) "알려진 주의사항 / 함정 — Flutter" 참고. 에러는 `toApiException(e).message`로 변환해 SnackBar로 노출 |
+| Flutter 새 도메인 추가 | ① 데이터: `lib/data/<feature>/<feature>.dart`(모델, `@immutable` + `fromJson`) + `<feature>_api.dart`(authDio 주입, `unwrapData`/`unwrapList` 사용). 여러 출처를 합쳐야 하면 `<feature>_repository.dart`도. ② DI: `lib/app/scopes.dart`에 `<Feature>Scope` 추가 + `main.dart`에서 인스턴스 생성·주입. ③ 화면: `lib/presentation/<feature>/<feature>_screen.dart`. 데이터 호출은 `<Feature>Scope.of(context)`로만 |
+| Flutter 새 화면의 비동기 로딩 | `AsyncStateMixin<W, T>` + `AsyncStateView<T>` 사용 ([presentation/common/async_state.dart](tenk_app/lib/presentation/common/async_state.dart)). `FutureBuilder` 금지. `fetch()` 오버라이드 + `didChangeDependencies`에서 `ensureLoaded()`. 외부 동작 결과를 즉시 반영하려면 `replaceData(next)`, 그 외 갱신은 `reload()`. 에러는 `toApiException(e).message`로 SnackBar 노출 |
+| Flutter 새 공용 위젯 | 두 화면 이상이 같은 위젯을 쓰면 즉시 추출. 도메인 전용은 `presentation/<domain>/widgets/`, 도메인 무관은 `presentation/common/` |
 
 ## 미해결/다음 단계
 
