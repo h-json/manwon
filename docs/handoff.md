@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-19 (Amount.spent_date → spent_dt: 분 단위 일시 기록)
+마지막 갱신: 2026-05-19 (Amount 일시 기록 + refresh_token 컬럼명 정리)
 
 ---
 
@@ -47,6 +47,7 @@
 - [x] Flutter 카카오 로그인 코드/설정 1차 구현 — 아래 "1. Flutter 앱 초기 구성" 참고.
 - [x] **카카오 로그인 안드로이드 매니페스트 클래스명 수정** — `com.kakao.sdk.flutter.AuthCodeCustomTabsActivity`(존재하지 않는 이름) → `com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity`(SDK 2.x 실제 클래스, 서브패키지 `.auth.` 주의). `tools:node="merge"`로 SDK가 이미 선언한 액티비티에 URL scheme intent-filter만 병합. `<manifest>`에 `xmlns:tools` 추가. [AndroidManifest.xml](../tenk_app/android/app/src/main/AndroidManifest.xml). 펍 캐시 SDK 매니페스트 + `AuthCodeHandlerActivity.kt`의 `onNewIntent` 로직 둘 다 cross-check 함. **에뮬레이터에서 끝까지 도는지 E2E 검증은 미수행** (사용자가 다음에 `flutter run` 콜드 부팅 후 확인 예정).
 - [x] **Flutter 챌린지 CRUD 화면** (2026-05-18 오후). 홈을 [ChallengeListScreen](../tenk_app/lib/presentation/challenge/challenge_list_screen.dart)으로 교체 (기존 `home/home_screen.dart` 삭제). [ChallengeCreateScreen](../tenk_app/lib/presentation/challenge/challenge_create_screen.dart)에서 시작/종료 DatePicker + 7일 제한 + 목표 금액 입력. [ChallengeDetailScreen](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart)에서 잔액·진행률 표시 + `awaitsFinalize`일 때 결과 확정 버튼 + 삭제. 데이터 레이어: [Challenge](../tenk_app/lib/data/challenge/challenge.dart) 모델 + [ChallengeApi](../tenk_app/lib/data/challenge/challenge_api.dart) (POST/GET/DELETE/finalize). 공통 에러 매핑 [api_error.dart](../tenk_app/lib/data/api/api_error.dart) — 백엔드 `ApiResponse.error.message`를 SnackBar에 그대로 노출. `main.dart`에 `ChallengeScope` InheritedWidget 추가. `flutter analyze` 0 issues.
+- [x] **refresh_token 컬럼명 정리** (2026-05-19 저녁). `revoked` → `is_revoked`, `expires_at` → `expires_dt` (다른 boolean·DATETIME 컬럼 컨벤션과 통일). Java 필드 `expiresAt` → `expiresDt`로도 같이 정리. `revoked` 필드명은 그대로 (`is_deleted ↔ deleted`, `is_no_spend ↔ noSpend` 패턴). 컴파일 ✅.
 - [x] **Amount 일시 기록** (2026-05-19 저녁). `amount.spent_date (DATE)` → `spent_dt (DATETIME)`. 백엔드: `Amount.spentDt` LocalDateTime, validation은 `challenge.containsDate(spentDt.toLocalDate())`. `AmountCreateRequest.date` → `dateTime`. `AmountRepository.findUserAmountsBetween`는 `[from, toExclusive)` LocalDateTime 구간으로, 호출자(BadgeGrantService)가 `today.minusDays(N).atStartOfDay()` / `today.plusDays(1).atStartOfDay()`로 경계 변환. BadgeGrantService/ChallengeExportService는 `spentDt.toLocalDate()`로 일 단위로 깎아서 사용. 인덱스 `idx_amount_challenge_spent` → `(challenge_id, spent_dt)`. Flutter: `Amount.spentDate` → `spentDt` (DateTime with time). `AmountApi.record(date:)` → `record(dateTime:)`, payload는 `yyyy-MM-ddTHH:mm:ss` (Z 없는 LocalDateTime 포맷). `AmountRecordScreen`은 date+time 2단 picker (DatePicker → TimePicker)로 교체, 기본값 = `DateTime.now()` (날짜만 챌린지 기간으로 clamp, 시각은 유지). 표시는 `formatDateTime`(`yyyy-MM-dd HH:mm`)으로. 백엔드 컴파일 ✅, `flutter analyze` 0 issues. **schema.sql 다시 적용 필요**.
 - [x] **날짜 모델 정비 — Challenge/Amount 둘 다** (2026-05-19 오후). 백엔드: ① `Challenge.startDt/endDt (LocalDateTime)` → `startDate/endDate (LocalDate, 양끝 포함)`. ② `MAX_DURATION_DAYS = 7 → 30`. ③ `validatePeriod`에 `startDate >= today` 추가. ④ `isStarted(today)` 추가, `isFinished(today) = today.isAfter(endDate)` 시맨틱 변경 (종료일 당일 = 아직 진행 중). ⑤ `ChallengeResponse`에 `started` 필드 추가. ⑥ `Amount`에 `spent_date DATE NOT NULL` 컬럼 + `containsDate` 검증 (`AMOUNT_DATE_OUT_OF_RANGE`). `created_dt`는 JPA Auditing 감사용으로만 남김. ⑦ `BadgeGrantService`/`ChallengeExportService`는 `spentDate` 기준으로 전환. ⑧ `AmountService.record`에서 `CHALLENGE_NOT_STARTED` / `CHALLENGE_ALREADY_FINISHED` 분기. ⑨ `docs/schema.sql` DDL 갱신 (`challenge.start_dt/end_dt` 컬럼명/타입 변경, `amount.spent_date` 추가, 인덱스 교체). **DB는 비어 있던 상태라 `mysql -u tenk -p tenk < docs/schema.sql` 재적용으로 충분 — 다음 부팅 전 필수.** Flutter: ① `Challenge.startDt/endDt` → `startDate/endDate` + `started` 필드 + `isBeforeStart` getter. ② `ChallengeCreateScreen`: `firstDate = today`, max 30일, 종료일 그대로 inclusive 전송(이전엔 +1일 보정했음). ③ `ChallengeStatusChip/Banner`에 "시작 전" 케이스 추가. ④ `AmountRecordScreen`이 `Challenge`를 받아 날짜 picker (firstDate/lastDate = challenge.start/end, 기본값 = today clamped) 추가, payload에 `date` 필드 포함. ⑤ `Amount`에 `spentDate` 필드 + 타일 표시도 `spentDate`로. `flutter analyze` 0 issues. **E2E 검증 미수행.**
 - [x] **Flutter 지출/무지출 기록 + 영상 녹화/업로드** (2026-05-19). 데이터 레이어: [Amount](../tenk_app/lib/data/amount/amount.dart) 모델 + [AmountApi](../tenk_app/lib/data/amount/amount_api.dart) (record/list/delete). multipart 업로드는 dio `FormData` + `MultipartFile.fromString(request JSON, contentType: application/json)` + `MultipartFile.fromFile(video, contentType: video/mp4)` 조합. `DioMediaType`은 dio가 재익스포트(http_parser 별도 추가 불필요). DI: [AmountScope](../tenk_app/lib/app/scopes.dart) 추가 + main.dart 조립. 화면: [AmountRecordScreen](../tenk_app/lib/presentation/amount/amount_record_screen.dart) — `camera` 패키지 `ResolutionPreset.low` + `enableAudio: false` + `Timer(2초)` 자동 정지. 지출 모드(카테고리/내용/금액 + 영상 필수) / 무지출 모드(영상 선택) 한 화면에서 분기. ChallengeDetailScreen 하단 placeholder를 `(challenge + amounts)` record로 묶어 fetch하는 형태로 교체 + "지출 기록 / 무지출" 버튼 + 기록 리스트 + 개별 삭제. Android 매니페스트에 `CAMERA` / `RECORD_AUDIO` 권한 + `<uses-feature>` 추가. **E2E 동작 검증은 미수행** (다음 세션에 콜드 부팅 후 확인).
@@ -78,7 +79,7 @@
 - ✅ 안드로이드 매니페스트 Kakao 액티비티 클래스명 수정 완료 (위 "완료된 것" 마지막 항목).
 - ✅ E2E 통과: 카카오 로그인 → 백엔드 교환 → 홈 진입 (2026-05-18).
 - 🟡 남은 일:
-  - **다음 세션 1순위: DB 스키마 재적용 + 지출/무지출 기록 화면 E2E 검증.** ⓪ 백엔드 부팅 전에 `mysql -u tenk -p tenk < docs/schema.sql`로 새 스키마(`start_date`/`end_date` DATE, `amount.spent_date`)를 다시 적용. ① 진행 중 챌린지 상세에서 "지출 기록" → 카메라 권한 프롬프트 수락 → 카테고리/내용/금액 + **날짜 picker(챌린지 기간으로 제한)** 확인 → "2초 녹화" 탭 → 자동 정지 → "저장" → 잔액/누적 지출이 즉시 반영. ② "무지출" → 영상 없이 바로 "저장" 통과. ③ 기록 리스트의 X 버튼으로 삭제 시 잔액 원복. ④ finalize까지 끊김 없이 동작. ⑤ 권한 거부 시 카메라 섹션이 "다시 시도" 에러로 떨어짐. ⑥ **새로 추가된 케이스**: 시작일을 미래로 잡은 챌린지를 만들어 상세에서 "시작 전" 배너 + 기록 버튼 비활성화 확인 / 30일 초과 / 시작일을 과거로 picker 우회 시 백엔드가 `CHALLENGE_PERIOD_INVALID` 반환하는지.
+  - **다음 세션 1순위: DB 스키마 재적용 + 지출/무지출 기록 화면 E2E 검증.** ⓪ 백엔드 부팅 전에 `mysql -u tenk -p tenk < docs/schema.sql`로 새 스키마(`challenge.start_date`/`end_date` DATE, `amount.spent_dt` DATETIME, `refresh_token.is_revoked`/`expires_dt`)를 다시 적용. ① 진행 중 챌린지 상세에서 "지출 기록" → 카메라 권한 프롬프트 수락 → 카테고리/내용/금액 + **일시 picker(DatePicker → TimePicker, 챌린지 기간으로 제한)** 확인 → "2초 녹화" 탭 → 자동 정지 → "저장" → 잔액/누적 지출이 즉시 반영. ② "무지출" → 영상 없이 바로 "저장" 통과. ③ 기록 리스트의 X 버튼으로 삭제 시 잔액 원복. ④ finalize까지 끊김 없이 동작. ⑤ 권한 거부 시 카메라 섹션이 "다시 시도" 에러로 떨어짐. ⑥ **새로 추가된 케이스**: 시작일을 미래로 잡은 챌린지를 만들어 상세에서 "시작 전" 배너 + 기록 버튼 비활성화 확인 / 30일 초과 / 시작일을 과거로 picker 우회 시 백엔드가 `CHALLENGE_PERIOD_INVALID` 반환하는지.
   - 실기기 테스트: 같은 Wi-Fi의 PC IP를 `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 주입. 실기기는 에뮬레이터와 카메라 동작이 미묘하게 달라 별도 확인 권장.
   - (선택) 녹화된 영상 재생 — 현재는 "녹화 완료" 체크 아이콘만 표시. `video_player` 추가하면 미리보기 가능하지만 MVP 범위 밖.
   - (참고) 동의 화면에 "맞춤형 광고 행태정보 처리" 항목이 보임 — 카카오 플랫폼 강제 항목이라 개발자가 끌 수 없음. 한 번 선택하면 다음 로그인부터 안 뜸. 우리 백엔드는 무관.
@@ -88,7 +89,7 @@
 - ✅ Flutter 카카오 로그인 → 백엔드 교환 → AT/RT 발급 → 홈 진입 동선 통과 (2026-05-18).
 - 🟡 별도 검증 필요 (앱에서 자동 발생하기 어려움). **Swagger UI 시나리오** — `http://localhost:8080/swagger-ui.html`에서 Authorize 버튼에 `Bearer <AT>` 입력 후 진행:
   1. **RT 회전 정상**: `/api/auth/kakao/login`으로 받은 RT₁을 `/api/auth/refresh`에 한 번 호출 → 200 + AT₂/RT₂ 응답. 같은 RT₁로 두 번째 `/refresh` → **401**(`AUTH_REFRESH_TOKEN_INVALID`)이 떠야 정상. RT₂로 호출하면 또 회전 → AT₃/RT₃.
-  2. **logout RT 일괄 무효화**: AT(아무거나 살아있는 것)로 `/api/auth/logout` 호출 → 200. 직전 가장 최신 RT로 `/refresh` 시도 → **401**. DB에서 `select revoked, count(*) from refresh_token where user_id = ? group by revoked` 했을 때 그 사용자 RT 전부 `revoked=1`인지.
+  2. **logout RT 일괄 무효화**: AT(아무거나 살아있는 것)로 `/api/auth/logout` 호출 → 200. 직전 가장 최신 RT로 `/refresh` 시도 → **401**. DB에서 `select is_revoked, count(*) from refresh_token where user_id = ? group by is_revoked` 했을 때 그 사용자 RT 전부 `is_revoked=1`인지.
   3. **만료 AT는 401 + 코드 구분**: AT 유효 기간이 1시간이라 그냥은 만료 안 됨. 빠르게 확인하려면 `application-local.yaml`에 임시로 `tenk.auth.jwt.access-token-ttl: PT10S` 박고 재부팅 → 로그인 후 10초 대기 → 보호 자원 호출 → 401 + `error.code = AUTH_TOKEN_EXPIRED`(`AUTH_TOKEN_INVALID`가 아니라). 확인 끝나면 TTL 원복.
   4. **stateless AT의 의도된 제약**: logout 후에도 AT 자체는 만료 시간(1시간)까지 유효 — 즉시 무효화 필요하면 RT만 revoke해도 다음 갱신 시 거부됨. 이게 의도된 동작 ([../CLAUDE.md](../CLAUDE.md) 인증 섹션 참고).
 
@@ -105,7 +106,7 @@
 
 ### 5. 통합 테스트 작성 (현재 없음)
 - 도메인별 `@SpringBootTest` 시나리오 테스트가 0개. 최소한 다음 4개는 빠르게 추가하면 좋음:
-  - `ChallengeServiceTest` — 7일 초과/역순 기간 검증, finalize SUCCESS/FAIL 분기
+  - `ChallengeServiceTest` — 30일 초과/시작일 과거/역순 기간 검증, finalize SUCCESS/FAIL 분기, isStarted/isFinished/containsDate 경계
   - `AmountServiceTest` — 지출 시 영상 누락 → `AMOUNT_VIDEO_REQUIRED`, 무지출 시 영상 없어도 통과
   - `BadgeGrantServiceTest` — `consecutiveStreakEndingOn` 경계값 (오늘 미기록·어제까지 연속 케이스 등)
   - `AuthServiceTest` / `JwtTokenProviderTest` — RT 회전, 만료 AT 거부, 카카오 응답 모킹
