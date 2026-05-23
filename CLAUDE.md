@@ -284,10 +284,16 @@ cd tenk-backend
 ```powershell
 cd tenk_app
 flutter pub get
-flutter run    # 연결된 디바이스/에뮬레이터에서 실행
+flutter run    # 연결된 디바이스/에뮬레이터에서 실행 (기본 base URL = http://10.0.2.2:8080, 에뮬레이터 전용)
 ```
 
-> 안드로이드 에뮬레이터는 호스트 백엔드를 `http://10.0.2.2:8080`으로, iOS 시뮬레이터는 `http://localhost:8080`으로 호출.
+**백엔드 base URL은 `lib/config/api_config.dart` 의 `API_BASE_URL` dart-define 으로 주입**. 기본값은 안드로이드 에뮬레이터용 `http://10.0.2.2:8080`. 다른 타깃은 빌드 시 명시:
+- iOS 시뮬레이터: `--dart-define=API_BASE_URL=http://localhost:8080`
+- 같은 Wi-Fi 안의 안드로이드 실기기: `--dart-define=API_BASE_URL=http://<PC LAN IP>:8080`. 동시에 두 군데 손볼 것 — ① [network_security_config.xml](tenk_app/android/app/src/main/res/xml/network_security_config.xml) 의 `<domain>` 목록에 해당 IP 추가 (cleartext HTTP 허용), ② PC Windows 방화벽에서 inbound TCP 8080 허용. **IP가 바뀌면 두 파일 + run config 모두 같이 갱신**.
+
+**VS Code Launch Configurations** ([.vscode/launch.json](.vscode/launch.json), git 추적 — 워크스페이스는 리포 루트 `tenk/` 에서 열림. `cwd: tenk_app` 으로 Flutter 프로젝트 잡음): Run/Debug 드롭다운에서 골라 F5. **백엔드는 IntelliJ 에서 `bootRun` 한 번 띄워두면 충분** — Spring Boot 가 `0.0.0.0:8080` 에서 듣고 있어 에뮬레이터/실기기 양쪽이 같은 프로세스로 들어간다.
+- `tenk_app (emulator)` — `--dart-define=API_BASE_URL=http://10.0.2.2:8080`
+- `tenk_app (device)` — `--dart-define=API_BASE_URL=http://192.168.0.7:8080`. IP 는 이 머신·이 네트워크 기준 — 다른 환경에서는 [docs/handoff.md](docs/handoff.md) "PC LAN IP" 항목을 보고 launch.json + network_security_config 같이 갱신할 것
 
 ## 위치별 책임 (요약)
 

@@ -34,7 +34,9 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
+# 루트 .vscode/ 는 기본 무시. 단 launch.json 만 예외로 추적 (워크스페이스를 리포 루트에서 열기 때문).
+/.vscode/*
+!/.vscode/launch.json
 
 ### Tenk ###
 tenk-backend/uploads/

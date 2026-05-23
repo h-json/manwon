@@ -4,5 +4,8 @@
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- 개발용: 같은 Wi-Fi 실기기에서 PC 백엔드 접근.
+             IP가 바뀌면 .vscode/launch.json 의 toolArgs IP와 같이 갱신. -->
+        <domain includeSubdomains="true">192.168.0.7</domain>
     </domain-config>
 </network-security-config>

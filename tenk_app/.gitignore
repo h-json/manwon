@@ -44,6 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Flutter DevTools 가 자동 생성하는 사용자별 환경설정 (확장 활성화 토글 등). 머신·취향마다 달라 추적 X.
+devtools_options.yaml
+
 # 영상 export drawtext 용 한글 폰트. 머신마다 직접 다운로드 (assets/fonts/README.md 참고).
 # 라이센스(OFL 등) 동봉 부담을 피하려고 git 추적은 README 만 유지.
 assets/fonts/*.ttf

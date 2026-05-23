@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "tenk_app (emulator)",
+            "cwd": "tenk_app",
+            "request": "launch",
+            "type": "dart",
+            "toolArgs": [
+                "--dart-define=API_BASE_URL=http://10.0.2.2:8080"
+            ]
+        },
+        {
+            "name": "tenk_app (device)",
+            "cwd": "tenk_app",
+            "request": "launch",
+            "type": "dart",
+            "toolArgs": [
+                "--dart-define=API_BASE_URL=http://192.168.0.7:8080"
+            ]
+        }
+    ]
+}
