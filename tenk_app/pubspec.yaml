@@ -38,6 +38,11 @@ dependencies:
   dio: ^5.9.2
   flutter_secure_storage: ^10.2.0
   camera: ^0.12.0+1
+  path_provider: ^2.1.5
+  video_player: ^2.11.1
+  gal: ^2.3.2
+  share_plus: ^13.1.0
+  ffmpeg_kit_flutter_new_video: ^2.0.0
 
 dev_dependencies:
   flutter_test:
@@ -63,6 +68,7 @@ flutter:
 
   assets:
     - assets/badges/
+    - assets/fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

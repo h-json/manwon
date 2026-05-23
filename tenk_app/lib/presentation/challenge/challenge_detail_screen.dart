@@ -7,6 +7,7 @@ import '../../data/challenge/challenge.dart';
 import '../amount/amount_record_screen.dart';
 import '../common/async_state.dart';
 import '_formatters.dart';
+import 'export/export_screen.dart';
 import 'widgets/challenge_badges.dart';
 import 'widgets/challenge_status.dart';
 
@@ -107,6 +108,14 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
     }
   }
 
+  void _openExport(Challenge challenge, List<Amount> amounts) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ExportScreen(challenge: challenge, amounts: amounts),
+      ),
+    );
+  }
+
   Future<void> _openRecord(Challenge challenge, {required bool noSpend}) async {
     final result = await Navigator.of(context).push<AmountRecordResult>(
       MaterialPageRoute<AmountRecordResult>(
@@ -205,6 +214,9 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
                   ? () => _openRecord(detail.challenge, noSpend: true)
                   : null,
               onDeleteAmount: _deleteAmount,
+              onOpenExport: detail.challenge.result != null
+                  ? () => _openExport(detail.challenge, detail.amounts)
+                  : null,
             ),
           ),
         ),
@@ -222,6 +234,7 @@ class _DetailBody extends StatelessWidget {
     required this.onRecordSpend,
     required this.onRecordNoSpend,
     required this.onDeleteAmount,
+    required this.onOpenExport,
   });
 
   final Challenge challenge;
@@ -231,6 +244,9 @@ class _DetailBody extends StatelessWidget {
   final VoidCallback? onRecordSpend;
   final VoidCallback? onRecordNoSpend;
   final ValueChanged<Amount> onDeleteAmount;
+
+  /// 챌린지가 확정(SUCCESS/FAIL)된 뒤에만 non-null. 진행 중·시작 전이면 null → 진입 카드 숨김.
+  final VoidCallback? onOpenExport;
 
   @override
   Widget build(BuildContext context) {
@@ -329,6 +345,10 @@ class _DetailBody extends StatelessWidget {
             onRecordSpend: onRecordSpend,
             onRecordNoSpend: onRecordNoSpend,
           ),
+        ],
+        if (onOpenExport != null) ...[
+          const SizedBox(height: 32),
+          _ExportEntryCard(onTap: busy ? null : onOpenExport),
         ],
         const SizedBox(height: 32),
         Text('기록 (${amounts.length})', style: theme.textTheme.titleMedium),
@@ -561,6 +581,64 @@ class _NoSpendTodayCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 확정된 챌린지에서만 노출되는 영상 합본 진입 카드. 회의 결정 #2 (노출 시점 = 확정 후) 와 일치.
+class _ExportEntryCard extends StatelessWidget {
+  const _ExportEntryCard({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+          child: Row(
+            children: [
+              Icon(
+                Icons.movie_creation_outlined,
+                size: 36,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '영상 만들기',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '기록 영상을 시간순으로 합쳐 하나의 영상으로.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+            ],
+          ),
         ),
       ),
     );

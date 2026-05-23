@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-21 (**영상 내보내기 회의 완료 + amount.memo 도메인 추가**. 영상 합본 export 는 이번 범위로 들어옴 — 클라이언트 측 ffmpeg_kit_flutter 로 시간순 합성, 자막 디폴트 오버라이드용 `amount.memo` 필드 추가. 백엔드 테스트 **77 그린** (단위 57 + 통합 15 + WebMvc 4 + 컨텍스트 1, 이전 75 → +2 memo 케이스). 다음 우선순위: 영상 내보내기 구현 착수 → 결과 카드 회의 → 배지 획득 애니메이션)
+마지막 갱신: 2026-05-23 (**영상 합본 export 구현 완료**. 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 만들어 갤러리 저장·공유까지. 클라이언트 측 `ffmpeg_kit_flutter_new_video` + sw `mpeg4` 인코더. h264_mediacodec/libx264/libkvazaar 모두 실격 — 자세한 함정 경로는 "함정 — H.264/HEVC sw 인코더 다 막힘". 백엔드 보강: MediaController 의 LAZY 함정 회피 + 회귀 가드 테스트 2개 — **백엔드 테스트 79 그린** (단위 57 + 통합 17 + WebMvc 4 + 컨텍스트 1). 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
 
 ---
 
@@ -20,7 +20,7 @@
    - 동의 항목에서 `프로필 정보(닉네임)`, `카카오계정(이메일)` 활성화
    - 앱 키의 **앱 ID(숫자)**를 `tenk-backend/src/main/resources/application.yaml`의 `tenk.auth.kakao.app-id`에 박기 (server-side `access_token_info`의 `app_id`와 매칭 검증용)
 5. 백엔드 실행: `cd tenk-backend && ./gradlew.bat bootRun` → `http://localhost:8080/swagger-ui.html`
-6. 백엔드 테스트: `cd tenk-backend && ./gradlew.bat test` (총 75개 그린 — 단위 55 + 통합 15 + WebMvc 4 + ContextLoads 1). ⚠️ **테스트 실행 시 로컬 `tenk` DB의 user/challenge/amount/challenge_badge/refresh_token 데이터가 비워진다** (badge 마스터는 유지). Flutter 재로그인으로 복구 가능
+6. 백엔드 테스트: `cd tenk-backend && ./gradlew.bat test` (총 79개 그린 — 단위 57 + 통합 17 + WebMvc 4 + ContextLoads 1). ⚠️ **테스트 실행 시 로컬 `tenk` DB의 user/challenge/amount/challenge_badge/refresh_token 데이터가 비워진다** (badge 마스터는 유지). Flutter 재로그인으로 복구 가능
 7. **Flutter 앱 셋업** (앱 작업까지 할 거면):
    - 새 머신의 `~/.android/debug.keystore`에서 키해시 추출:
      `keytool -exportcert -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android -keypass android | openssl sha1 -binary | openssl base64` (Git Bash). PowerShell `Get-FileHash` 안 됨 — [[reference-kakao-android-keyhash]] 참고.
@@ -83,6 +83,14 @@
   - 카드 ladder `[3, 7, 14, 30]` 는 백엔드 `badge` 마스터의 NO_SPEND condition_value 와 1:1. 변경 시 [docs/schema.sql](schema.sql) 시드와 함께 갱신 (CLAUDE.md "배지 카탈로그 변경" 행 참고).
   - 백엔드 변경 없음 — 데이터는 기존 challenge + amounts 응답으로 충분.
 
+- ✅ **영상 합본 export 구현 완료** (2026-05-23). 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 만들어 갤러리 저장·공유까지. 회의 결정 13개 항목 그대로 반영. 실기기에서 합성 → 갤러리 저장 → 재생 골든 패스 검증 통과.
+  - **Flutter 신규**: 데이터 레이어 — [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) (ffmpeg 합성 2-pass 래퍼), [media_api.dart](../tenk_app/lib/data/media/media_api.dart) (영상 다운로드). 화면 — [presentation/challenge/export/](../tenk_app/lib/presentation/challenge/export/) 5개 (export_plan/export_screen/export_prefetch_screen/export_compose_screen/export_result_screen). 진입은 [_ExportEntryCard](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) (챌린지 확정 후에만 non-null).
+  - **Flutter 의존성 +5**: `ffmpeg_kit_flutter_new_video` (LGPL 'video' 변종), `path_provider`, `video_player`, `gal`, `share_plus`. 한글 폰트는 [assets/fonts/Korean.ttf](../tenk_app/assets/fonts/) — `pubspec.yaml` 의 `flutter.assets` 에 `assets/fonts/` 등록. 폰트 자체는 git 추적 X (사용자가 직접 OFL 폰트 다운로드 — [README](../tenk_app/assets/fonts/README.md)).
+  - **권한**: Android — `WRITE_EXTERNAL_STORAGE android:maxSdkVersion="29"` (gal 의 API 29 이하 호환). `camera_android_camerax` 가 같은 permission 을 maxSdkVersion=28 로 선언해서 manifest merger 충돌 → `tools:replace="android:maxSdkVersion"` 으로 덮어씀. iOS — `NSPhotoLibraryAddUsageDescription` 추가.
+  - **백엔드 보강**: [MediaController](../tenk-backend/src/main/java/com/hjson/tenk/domain/media/MediaController.java) 의 download/meta 가 트랜잭션 밖에서 `mediaFile.getAmount().getChallenge().getUser().getId()` 체이닝을 풀어 `LazyInitializationException` 위험 → [MediaFileRepository.findByIdWithAmountChallengeUser](../tenk-backend/src/main/java/com/hjson/tenk/domain/media/MediaFileRepository.java) JOIN FETCH 쿼리로 회피. 회귀 가드 [MediaFileRepositoryIntegrationTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/media/MediaFileRepositoryIntegrationTest.java) 2개 추가 — **백엔드 총 79개 그린**.
+  - **인코더 시행착오 (놓치면 같은 함정 재방문)**: `h264_mediacodec`(hw) → return code 0 인데 빈 컨테이너 silent fail. `libx264`(sw H.264) → GPL 이라 'video' 변종 빌드에 미포함. `libkvazaar`(sw HEVC) → cleanup 단계 native crash (`pthread_mutex_destroy called on a destroyed mutex`). 최종 정착은 ffmpeg 내장 **`mpeg4` (MPEG-4 Part 2, LGPL)**. 자세한 경로는 [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) `_videoEncoder` 상단 주석 + 본 문서 "함정 — H.264/HEVC sw 인코더 다 막힘".
+  - **보류 — 결과 카드**: 회의에서 보류된 "영상 끝 3초 결과 카드" 는 이번 구현에 미포함. 챌린지 확정 화면 자체가 분리될 가능성 때문에 후속 결정으로 미룸.
+
 - ✅ **영상 내보내기 회의 완료 + amount.memo 도메인 추가** (2026-05-21). 영상 합본 export 가 이번 범위로 진입. amount 에 메모 필드(VARCHAR 500, NULL 허용) 추가 — 지출/무지출 양쪽 모두 선택 입력. 빈/공백은 엔티티에서 null 로 정규화 (DTO 분기를 깔끔하게). 용도는 영상 export 자막 디폴트 오버라이드.
   - 백엔드: [Amount.java](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/Amount.java) `memo` 필드 + `spend()`/`noSpend()`/`update()` 시그니처에 memo 추가, [AmountCreateRequest](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/dto/AmountCreateRequest.java) `@Size(max=500) memo` + [AmountController](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/AmountController.java) `@Valid`, [AmountResponse](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/dto/AmountResponse.java) memo 노출.
   - DB: amount 테이블에 `memo VARCHAR(500) NULL` 컬럼. **schema.sql 1회 적용 필요** (DROP & RECREATE).
@@ -109,29 +117,9 @@
 
 ## 남은 일 (우선순위 순)
 
-> 백엔드 테스트(단위·통합·WebMvc)는 ✅ 완료. 자세한 건 "완료된 것 — 통합 테스트 마무리" 항목 참고.
+> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export 는 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고.
 
-### 1. 영상 합본 내보내기 구현 (회의 완료, 착수 대기)
-
-> 회의록은 아래 "영상 내보내기 회의록 (2026-05-21)" 참고. 13개 항목 결정 + 결과 카드 1개 보류.
-> **핵심**: 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 만드는 기능. 클라이언트 측 `ffmpeg_kit_flutter` 로 처리 (서버 부담 0).
-
-**구현 순서 제안**
-1. **백엔드**: 영상 다운로드 엔드포인트 확인/추가. 현재 [MediaController](../tenk-backend/src/main/java/com/hjson/tenk/domain/media/MediaController.java) 가 어떤 형태인지 점검 → 인증된 사용자가 자신의 amount 영상을 받을 수 있어야 함.
-2. **Flutter 의존성 추가**: `ffmpeg_kit_flutter`(또는 `_min` 변형), `gal` 또는 `image_gallery_saver`, `share_plus`, `video_player`, `path_provider`. 앱 크기 +30~50MB.
-3. **선택 화면**: `presentation/challenge/export/` 신설. 챌린지 확정 후에만 진입 가능한 버튼 → 기록 선택 리스트(체크박스 + 날짜 + 내용 + 금액). 각 row 탭 시 메모 편집 모달.
-4. **합성 진행**: 전체화면 진행률 + 캔슬 버튼. 1개라도 실패하면 전체 중단 + 재시도. 캐싱 없음.
-5. **결과 처리**: 미리보기(video_player) → 갤러리 저장 + OS 공유 시트 둘 다 노출.
-
-**자막/대시보드 사양** (회의 결정)
-- 대시보드(상단): `Day N · 잔여 X,XXX원`. 잔여는 클립 시작=직전 잔여, 끝=차감 후 잔여 카운트다운.
-- 자막(하단 고정): 사용자 메모 있으면 메모, 없으면 지출="내용 금액원" / 무지출="무지출".
-- 무지출 영상 없으면 텍스트 카드(2초)로 합본에 끼움.
-- 클립 간 0.3초 cross-fade, 무음. 출력은 480p 통일.
-
-**보류 — 결과 카드 (마지막 3초)**: 영상 끝에 붙일지 vs 챌린지 확정 시 별도 화면으로 분리할지 미정. 영상 내보내기 구현 도중 결정 가능.
-
-### 2. 배지 획득 애니메이션
+### 1. 배지 획득 애니메이션
 
 > 사용자 성취감/재미를 위해. 도메인 변경 없는 순수 클라이언트 UX.
 
@@ -140,20 +128,20 @@
 - MVP: 새 배지 발견 시 dialog로 1.5초 lottie 재생. 챌린지 상세에서만 트리거 (목록 화면은 시끄러워짐).
 - 애셋: Lottie JSON 1~2개 정도. `assets/animations/badge_acquired.json` 같은 위치.
 
-### 3. 앱 UX 다듬기 (나머지)
+### 2. 앱 UX 다듬기 (나머지)
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
-- **녹화 영상 미리보기** — 현재는 체크 아이콘만. `video_player` 패키지 추가하면 미리보기 가능 (MVP 범위 밖).
+- **녹화 영상 미리보기** — 현재는 체크 아이콘만. `video_player` 는 이미 의존성에 들어와 있음 (영상 export result 화면용) — 재활용 가능.
+- **영상 export 결과 카드** — 회의 보류 항목. 영상 끝 3초 결과 카드 vs 챌린지 확정 시 별도 화면. 챌린지 확정 화면 디자인과 같이 결정.
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
 
-### 4. 페이지네이션 / 정렬
+### 3. 페이지네이션 / 정렬
 - `/api/challenges`, `/api/challenges/{id}/amounts`가 전체 목록 반환 중. `Pageable` 도입 시점 결정 (지금은 사용자당 챌린지 수가 적어 무방).
 
-### 5. Google / Naver 로그인 추가 (예정)
+### 4. Google / Naver 로그인 추가 (예정)
 - 동일 패턴: `GoogleTokenVerifier` / `NaverTokenVerifier` + `AuthService`에 분기 + `POST /api/auth/google/login` / `/naver/login`. **브라우저 redirect 흐름은 사용하지 않음** (모바일 SDK 전제).
 
-### 6. 운영 고려사항 (필요해지면)
+### 5. 운영 고려사항 (필요해지면)
 - **영상 저장소 S3/MinIO 이전** — `LocalFileStorage`를 인터페이스로 추출 후 구현체 분리.
-- **영상 워터마크** (날짜·잔액 오버레이) — 추후 FFmpeg 도입 시 별도 서비스.
 - **AT 강제 무효화(블랙리스트)** — 필요 시 Redis. 현재는 AT 만료 시간(1시간)에 의존.
 - **CI 도입** — 현재 통합 테스트가 로컬 `tenk` 스키마를 비우는 구조라 CI 에서 그대로 못 돈다. 도입 시 Testcontainers + 별도 `tenk_test` 스키마로 갈아탈 것.
 
@@ -228,7 +216,12 @@
 ### 구현 시 주의사항
 
 - **백엔드 추가 작업 거의 없음** — 영상 다운로드 엔드포인트가 이미 있으면 그대로. 없으면 인증된 사용자가 자신의 amount 영상을 받을 수 있는 엔드포인트 1개 (현재 [MediaController](../tenk-backend/src/main/java/com/hjson/tenk/domain/media/MediaController.java) 확인 필요).
-- **앱 크기**: `ffmpeg_kit_flutter` full 빌드는 +30~50MB. `_min` 변형 또는 LTS 빌드 검토하여 필요한 코덱만 포함. h264 + xfade + drawtext + scale 정도면 충분.
+- **패키지/인코더 선택**: `ffmpeg_kit_flutter_new_video` (LGPL 'video' 변종) 사용 중. sw 인코더는 최종적으로 ffmpeg 내장 **`mpeg4` (MPEG-4 Part 2, LGPL)** 채택. 회의 결정 #1 의 "h264" 표현은 H.264 고집이 아니라 "표준 동영상 코덱" 의미였고 MP4 컨테이너에 MPEG-4 Part 2 도 어디서나 재생 가능하니 무방.
+- **함정 — H.264/HEVC sw 인코더 다 막힘**: 후보를 다 돌려본 결과 ffmpeg_kit_flutter_new_video 환경에선 mpeg4 외 선택지가 없다. 다음은 모두 실격 — 같은 함정에 다시 들어가지 말 것:
+  - `h264_mediacodec` (hw): lavfi `color` 소스/짧은(2초) 클립 인코딩 시 return code 0 인데 duration N/A + 스트림 없는 빈 컨테이너를 뱉는다. 정규화는 통과한 척 → concat 에서 `[N:v] matches no streams` 로 죽음. 디바이스/펌웨어 의존이라 재현이 일정치 않음.
+  - `libx264` (sw H.264): GPL — 현재 'video' 변종 빌드에 미포함, 라이센스 이슈로 채택 X.
+  - `libkvazaar` (sw HEVC): 빌드엔 있지만 native crash. ffmpeg `exit_program` → `of_close` → `avcodec_free_context` → `pthread_mutex_destroy` 에서 `FORTIFY: called on a destroyed mutex` SIGABRT. kvazaar 자체 스레드풀과 ffmpeg cleanup 의 더블 프리. 패키지 버그라 사용자 코드 우회 불가.
+- **앱 크기**: `ffmpeg_kit_flutter_new_video` 빌드는 +30~50MB. 더 줄이고 싶으면 `_min` 계열도 mpeg4 는 들어있으므로 시도 가능.
 - **메모리/배터리**: 30일치(최대 ~60개 클립 × 2초) 합성은 저사양 폰에서 수십 초 걸릴 수 있음. 캔슬 가능해야 함. ffmpeg_kit 의 `Session.cancel()` 활용.
 - **자막 폰트**: ffmpeg drawtext 는 시스템 폰트 경로가 필요. 한글 폰트를 앱 자산으로 번들링 (예: `assets/fonts/PretendardJP.ttf`) 후 ffmpeg 에 경로 전달.
 - **잔여금 카운트다운**: 한 클립(2초)에서 시작값→끝값으로 보간된 텍스트를 매 프레임 그리려면 drawtext 의 `t` 변수(현재 재생시간)와 expression 활용. 또는 클립 길이를 짧은 세그먼트로 쪼개고 각 세그먼트마다 다른 텍스트 — 후자가 단순.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/amount/amount_api.dart';
 import '../data/auth/auth_repository.dart';
 import '../data/challenge/challenge_api.dart';
+import '../data/media/media_api.dart';
 
 /// 트리 어디서든 [AuthRepository]를 꺼내쓰기 위한 단순 InheritedWidget.
 ///
@@ -66,5 +67,26 @@ class AmountScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(AmountScope oldWidget) => api != oldWidget.api;
+}
+
+/// 트리 어디서든 [MediaApi]를 꺼내쓰기 위한 단순 InheritedWidget.
+/// 영상 export 의 prefetch 단계에서 원본 영상 다운로드용.
+class MediaScope extends InheritedWidget {
+  const MediaScope({
+    super.key,
+    required this.api,
+    required super.child,
+  });
+
+  final MediaApi api;
+
+  static MediaApi of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<MediaScope>();
+    assert(scope != null, 'MediaScope not found in widget tree');
+    return scope!.api;
+  }
+
+  @override
+  bool updateShouldNotify(MediaScope oldWidget) => api != oldWidget.api;
 }
 

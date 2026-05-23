@@ -18,7 +18,7 @@
 - **대상 클라이언트**: **Flutter 기반 모바일 앱(iOS/Android 단일 코드베이스)**. 브라우저 기반 흐름(서버 사이드 OAuth redirect, 세션 쿠키 등) 대신 모바일 친화적인 토큰 기반 흐름을 사용. 모든 백엔드 변경은 이 전제를 깔고 갈 것.
   - 카카오 로그인: 공식 `kakao_flutter_sdk`로 access token 발급 후 백엔드 `/api/auth/kakao/login`에 전달.
   - 영상 녹화: Flutter `camera` 패키지의 **`ResolutionPreset.low` + 2초 타이머**로 처음부터 저화질·짧게 촬영. ffmpeg 등 후처리 트랜스코딩은 사용하지 않음.
-- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 통합테스트는 미수행. Flutter 앱은 카카오 로그인 + 챌린지 CRUD + 지출/무지출 기록 + 영상 녹화·업로드 + 배지 화면까지 완료.
+- **현재 단계**: 백엔드 REST API 골격 1차 구현 완료. 통합테스트는 미수행. Flutter 앱은 카카오 로그인 + 챌린지 CRUD + 지출/무지출 기록 + 영상 녹화·업로드 + 배지 화면 + **영상 합본 export(클라이언트 ffmpeg 합성)** 까지 완료.
 
 ## 리포 구조 (모노레포)
 
@@ -55,7 +55,7 @@ tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
 | 파일 저장 | 로컬 파일 시스템 (`./uploads/`, gitignore) |
 | API 문서 | springdoc-openapi (`/swagger-ui.html`) |
 | 빌드 | Gradle Wrapper |
-| 테스트(백엔드) | JUnit5 + Mockito + AssertJ. 총 77개: 단위 57 + `@SpringBootTest` 통합 15 (배지 이벤트 8 + 배치 2 + Amount 쿼리 경계 5) + `@WebMvcTest` 인증 필터 슬라이스 4 + 컨텍스트 로드 1. `@SpringBootTest` 통합은 **로컬 MariaDB의 `tenk` 스키마를 그대로 사용**하므로 매 테스트 실행 시 user/challenge/amount 등 dev 데이터가 함께 비워진다 (Flutter 재로그인으로 복구). 패턴은 [IntegrationTestBase](tenk-backend/src/test/java/com/hjson/tenk/support/IntegrationTestBase.java) 참고. WebMvc 슬라이스는 DB 없이 가볍게 돈다 ([JwtAuthenticationFilterWebMvcTest](tenk-backend/src/test/java/com/hjson/tenk/security/JwtAuthenticationFilterWebMvcTest.java)) |
+| 테스트(백엔드) | JUnit5 + Mockito + AssertJ. 총 79개: 단위 57 + `@SpringBootTest` 통합 17 (배지 이벤트 8 + 배치 2 + Amount 쿼리 경계 5 + Media JOIN FETCH 2) + `@WebMvcTest` 인증 필터 슬라이스 4 + 컨텍스트 로드 1. `@SpringBootTest` 통합은 **로컬 MariaDB의 `tenk` 스키마를 그대로 사용**하므로 매 테스트 실행 시 user/challenge/amount 등 dev 데이터가 함께 비워진다 (Flutter 재로그인으로 복구). 패턴은 [IntegrationTestBase](tenk-backend/src/test/java/com/hjson/tenk/support/IntegrationTestBase.java) 참고. WebMvc 슬라이스는 DB 없이 가볍게 돈다 ([JwtAuthenticationFilterWebMvcTest](tenk-backend/src/test/java/com/hjson/tenk/security/JwtAuthenticationFilterWebMvcTest.java)) |
 
 ## 도메인 규칙 (의사결정 합의)
 
@@ -84,7 +84,7 @@ tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
 - 저장소는 로컬 파일 시스템 (`tenk.upload.base-dir`, 기본 `./uploads`). `.gitignore`에 등록됨.
 - **녹화 시 음성은 꺼둠** (`CameraController(enableAudio: false)`). 사유: `RECORD_AUDIO` 런타임 권한 프롬프트를 한 단계 줄이기 위해. 추후 음성이 필요해지면 매니페스트 `RECORD_AUDIO`는 이미 선언돼 있으니 코드에서 `enableAudio: true`로만 바꾸면 됨.
 - **업로드 형식**: multipart/form-data로 `request`(application/json) + `video`(video/mp4) 2개 part. dio의 `MediaType`은 dio v5.7+에서 `DioMediaType`으로 재익스포트됨 — 따로 `http_parser`를 의존성에 추가하지 말 것.
-- **영상 합본 내보내기 (예정 — 미구현)**: 챌린지 확정 후 기록 영상들을 시간순으로 합쳐 1개 MP4 로 만드는 기능. 결정 사항은 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록" 참고. 합성은 **클라이언트 측 `ffmpeg_kit_flutter`** 로 처리 (서버 부담 0). 자막 디폴트는 `amount.memo` → 없으면 지출="내용 금액원" / 무지출="무지출" 순으로 폴백.
+- **영상 합본 내보내기 (구현 완료)**: 챌린지 확정 후 기록 영상들을 시간순으로 합쳐 1개 MP4 로 만드는 기능. 결정 사항은 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록", 함정 모음은 같은 문서 "알려진 주의사항 / 함정" 참고. 합성은 **클라이언트 측 `ffmpeg_kit_flutter_new_video`** (LGPL 'video' 변종) 로 처리 — 서버 부담 0. 자막 디폴트는 `amount.memo` → 없으면 지출="내용 금액원" / 무지출="무지출" 순으로 폴백. **인코더는 sw `mpeg4` 만 사용** — `h264_mediacodec` 은 silent fail, `libx264` 는 GPL 이라 빌드에 없음, `libkvazaar` 는 native crash. 자세한 경로 [video_composer.dart](tenk_app/lib/data/export/video_composer.dart) `_videoEncoder` 주석 참고.
 
 ### 챌린지
 - 한 사용자가 **여러 챌린지 동시 진행 가능**.
@@ -132,7 +132,7 @@ tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
 
 ### 내보내기
 - **JSON 통계 export** (`GET /api/challenges/{id}/export`): 일별·카테고리별 집계 + 전체 item 목록. 통계·외부 연동용으로 유지. 화면 구성은 클라이언트 몫.
-- **영상 합본 export (예정 — 미구현)**: 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 내보내는 기능. 클라이언트 측 ffmpeg 로 처리. 결정·범위는 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록".
+- **영상 합본 export (구현 완료)**: 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 내보내는 기능. 클라이언트 측 `ffmpeg_kit_flutter_new_video` 로 처리. 진입은 챌린지 상세 화면의 "영상 만들기" 카드 (확정 후에만 노출). 파이프라인은 ① 원본 영상 prefetch → ② 클립 단위 정규화(864x480, 2초, 자막+대시보드 burn-in, mpeg4) → ③ 0.3초 xfade 로 concat → ④ 갤러리 저장(`gal`) + OS 공유(`share_plus`). 자세한 결정·범위는 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록".
 
 ## 패키지 구조 (백엔드)
 
@@ -183,8 +183,12 @@ lib/
 │   │   ├── challenge.dart, challenge_api.dart
 │   ├── amount/                   # 지출/무지출 기록 + multipart 영상 업로드
 │   │   ├── amount.dart, amount_api.dart
-│   └── badge/                    # 챌린지 응답에 인라인되는 AcquiredBadge 모델만 (API 없음)
-│       └── badge.dart
+│   ├── badge/                    # 챌린지 응답에 인라인되는 AcquiredBadge 모델만 (API 없음)
+│   │   └── badge.dart
+│   ├── media/                    # 영상 다운로드 (export prefetch 용)
+│   │   └── media_api.dart
+│   └── export/                   # ffmpeg 영상 합본 합성 (외부 통신 X, 로컬 처리)
+│       └── video_composer.dart     # 정규화→concat 2-pass. mpeg4 sw 인코더 고정
 └── presentation/               # 화면. data 레이어를 Scope로만 호출
     ├── common/                   # 도메인 무관 공용 위젯·헬퍼
     │   ├── async_state.dart        # AsyncStateMixin + AsyncStateView (필수 — 아래 컨벤션 참고)
@@ -195,10 +199,18 @@ lib/
     │   ├── widgets/                # 도메인 전용 공용 위젯
     │   │   ├── challenge_status.dart
     │   │   └── challenge_badges.dart  # 챌린지에 귀속된 배지 아이콘만 작게 (잠금 노출 X)
+    │   ├── export/                 # 영상 합본 export 흐름 (확정 후에만 진입)
+    │   │   ├── export_plan.dart      # 세션 한정 모델 (선택 + 자막 오버라이드)
+    │   │   ├── export_screen.dart    # 클립 선택 + 자막 편집
+    │   │   ├── export_prefetch_screen.dart  # 원본 영상 다운로드
+    │   │   ├── export_compose_screen.dart   # ffmpeg 합성 진행률 + 캔슬
+    │   │   └── export_result_screen.dart    # 미리보기 + 갤러리 저장 + 공유
     │   └── *_screen.dart           # 카드·상세 양쪽에서 ChallengeBadgesRow 사용
     └── amount/
         └── amount_record_screen.dart  # 카메라 프리뷰 + 2초 녹화 + 폼 (지출/무지출 토글)
 ```
+
+자산: `tenk_app/assets/fonts/Korean.ttf` (영상 export drawtext 자막용 — Pretendard/NotoSansKR 권장, TTF 만). 없으면 `MissingFontException` 으로 export 자체가 중단된다. 자세한 설치 가이드는 [tenk_app/assets/fonts/README.md](tenk_app/assets/fonts/README.md).
 
 배지 자산: `tenk_app/assets/badges/` (pubspec.yaml `flutter.assets`에 등록). 파일명은 서버 `badge.icon_path`와 1:1 매칭 (`streak_3.png` 등 9개). 새 배지 추가 시 schema.sql · 자산 디렉토리 동시 갱신.
 
@@ -298,6 +310,7 @@ flutter run    # 연결된 디바이스/에뮬레이터에서 실행
 | 배지를 부여하는 로직 변경 | [BadgeGrantService](tenk-backend/src/main/java/com/hjson/tenk/domain/badge/BadgeGrantService.java) 는 항상 **챌린지 단위**로 평가. `evaluateForChallenge(challengeId)` / `grantChallengeSuccess(challengeId, result)`. 유저 단위 누적이 필요하면 새 서비스(추후 achievement 시스템)로 분리할 것 — 여기에 user 파라미터를 다시 끼우지 말 것. amount 쿼리는 `findByChallengeOrderBySpentDtAscCreatedDtAsc(challenge)` 사용. **STREAK는 연속, NO_SPEND는 누적** (서로 다른 행동에 대한 보상이라 정의가 다름). 단일 패스 `applyLadder` 가 grant/revoke 양방향을 처리 — 회수가 필요한 변경(예: 무지출 자동 삭제)에서도 별도 호출 없이 재평가만 하면 정합. |
 | Flutter 새 화면의 비동기 로딩 | `AsyncStateMixin<W, T>` + `AsyncStateView<T>` 사용 ([presentation/common/async_state.dart](tenk_app/lib/presentation/common/async_state.dart)). `FutureBuilder` 금지. `fetch()` 오버라이드 + `didChangeDependencies`에서 `ensureLoaded()`. 외부 동작 결과를 즉시 반영하려면 `replaceData(next)`, 그 외 갱신은 `reload()`. 에러는 `toApiException(e).message`로 SnackBar 노출 |
 | Flutter 새 공용 위젯 | 두 화면 이상이 같은 위젯을 쓰면 즉시 추출. 도메인 전용은 `presentation/<domain>/widgets/`, 도메인 무관은 `presentation/common/` |
+| 영상 export 합성 파이프라인 변경 | [VideoComposer](tenk_app/lib/data/export/video_composer.dart) 에서 ffmpeg 명령 구성. **인코더는 sw `mpeg4` 고정 — 바꾸지 말 것**. `h264_mediacodec`(hw silent fail) / `libx264`(GPL · 빌드 미포함) / `libkvazaar`(native crash) 모두 실격됐고 경로는 `_videoEncoder` 주석 + [handoff.md "함정 — H.264/HEVC sw 인코더 다 막힘"](docs/handoff.md) 에 박혀 있다. 자막용 한글 폰트는 [assets/fonts/Korean.ttf](tenk_app/assets/fonts/) — 없으면 `MissingFontException` 으로 export 자체 중단. 합성 파라미터(해상도/비트레이트/xfade 길이 등)는 모두 클래스 상단 상수 |
 
 ## 미해결/다음 단계
 

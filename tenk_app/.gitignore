@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 영상 export drawtext 용 한글 폰트. 머신마다 직접 다운로드 (assets/fonts/README.md 참고).
+# 라이센스(OFL 등) 동봉 부담을 피하려고 git 추적은 README 만 유지.
+assets/fonts/*.ttf
+assets/fonts/*.otf

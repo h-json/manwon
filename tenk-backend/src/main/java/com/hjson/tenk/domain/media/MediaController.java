@@ -35,7 +35,7 @@ public class MediaController {
     @GetMapping("/{fileId}")
     public ResponseEntity<Resource> download(@CurrentUserId Long userId,
                                              @PathVariable Long fileId) throws IOException {
-        MediaFile mediaFile = mediaFileRepository.findById(fileId)
+        MediaFile mediaFile = mediaFileRepository.findByIdWithAmountChallengeUser(fileId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEDIA_NOT_FOUND));
         Long ownerId = mediaFile.getAmount().getChallenge().getUser().getId();
         if (!ownerId.equals(userId)) {
@@ -60,7 +60,7 @@ public class MediaController {
     @Operation(summary = "메타데이터 조회")
     @GetMapping("/{fileId}/meta")
     public ApiResponse<MediaMeta> meta(@CurrentUserId Long userId, @PathVariable Long fileId) {
-        MediaFile mediaFile = mediaFileRepository.findById(fileId)
+        MediaFile mediaFile = mediaFileRepository.findByIdWithAmountChallengeUser(fileId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEDIA_NOT_FOUND));
         Long ownerId = mediaFile.getAmount().getChallenge().getUser().getId();
         if (!ownerId.equals(userId)) {

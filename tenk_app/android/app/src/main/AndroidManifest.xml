@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- gal: 영상 합본 갤러리 저장용. API 30+ 는 MediaStore 라 권한 불필요, API 29 이하만 필요.
+         camera_android_camerax 가 같은 permission 을 maxSdkVersion=28 로 선언해서 manifest merger 가 충돌 → tools:replace 로 덮어씀. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"
+        tools:replace="android:maxSdkVersion"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
