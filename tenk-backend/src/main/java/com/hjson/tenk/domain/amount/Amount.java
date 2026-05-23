@@ -103,7 +103,10 @@ public class Amount {
         return new Amount(challenge, null, null, 0, true, memo, spentDt);
     }
 
-    public void update(String category, String content, int amount, String memo) {
+    /// 지출/무지출 수정. {@code spentDt} 는 지출에만 적용 (무지출은 항상 서버 now() 강제라 인자 무시).
+    /// 지출의 spentDt 는 날짜 부분이 챌린지 기간 안이어야 한다 — 시간만 바꿔도 검증을 다시 돈다.
+    public void update(String category, String content, int amount, String memo,
+                       LocalDateTime spentDt) {
         if (this.noSpend) {
             if (amount != 0) {
                 throw new BusinessException(ErrorCode.AMOUNT_INVALID_NO_SPEND_VALUE);
@@ -114,6 +117,7 @@ public class Amount {
             this.memo = normalizeMemo(memo);
             return;
         }
+        validateDateInChallenge(this.challenge, spentDt);
         if (amount <= 0) {
             throw new BusinessException(ErrorCode.AMOUNT_INVALID_SPEND_VALUE);
         }
@@ -124,6 +128,7 @@ public class Amount {
         this.content = content;
         this.amount = amount;
         this.memo = normalizeMemo(memo);
+        this.spentDt = spentDt;
     }
 
     /// 빈/공백 메모는 null 로 정규화 — DTO 디폴트 분기(메모 있으면 메모, 없으면 폴백)가 깔끔해진다.

@@ -4,6 +4,7 @@ import '../../app/scopes.dart';
 import '../../data/amount/amount.dart';
 import '../../data/api/api_error.dart';
 import '../../data/challenge/challenge.dart';
+import '../amount/amount_edit_screen.dart';
 import '../amount/amount_record_screen.dart';
 import '../common/async_state.dart';
 import '_formatters.dart';
@@ -137,42 +138,19 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
     }
   }
 
-  Future<void> _deleteAmount(Amount amount) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('기록 삭제'),
-        content: const Text('이 기록과 첨부된 영상이 삭제돼요.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton.tonal(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('삭제'),
-          ),
-        ],
+  Future<void> _openEdit(Challenge challenge, Amount amount) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => AmountEditScreen(
+          challenge: challenge,
+          original: amount,
+        ),
       ),
     );
-    if (ok != true) return;
     if (!mounted) return;
-    setState(() => _busy = true);
-    try {
-      await AmountScope.of(context).delete(
-        challengeId: widget.challengeId,
-        amountId: amount.id,
-      );
+    if (changed == true) {
       _changed = true;
-      if (!mounted) return;
       await reload();
-    } catch (e) {
-      if (!mounted) return;
-      final msg = toApiException(e).message;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('삭제 실패: $msg')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -213,7 +191,7 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
               onRecordNoSpend: detail.challenge.isInProgress
                   ? () => _openRecord(detail.challenge, noSpend: true)
                   : null,
-              onDeleteAmount: _deleteAmount,
+              onEditAmount: (amount) => _openEdit(detail.challenge, amount),
               onOpenExport: detail.challenge.result != null
                   ? () => _openExport(detail.challenge, detail.amounts)
                   : null,
@@ -233,7 +211,7 @@ class _DetailBody extends StatelessWidget {
     required this.onFinalize,
     required this.onRecordSpend,
     required this.onRecordNoSpend,
-    required this.onDeleteAmount,
+    required this.onEditAmount,
     required this.onOpenExport,
   });
 
@@ -243,7 +221,9 @@ class _DetailBody extends StatelessWidget {
   final VoidCallback? onFinalize;
   final VoidCallback? onRecordSpend;
   final VoidCallback? onRecordNoSpend;
-  final ValueChanged<Amount> onDeleteAmount;
+
+  /// 기록 카드 탭 → 수정 화면 진입. 수정 화면 안에서 저장/삭제 양쪽 모두 처리한다.
+  final ValueChanged<Amount> onEditAmount;
 
   /// 챌린지가 확정(SUCCESS/FAIL)된 뒤에만 non-null. 진행 중·시작 전이면 null → 진입 카드 숨김.
   final VoidCallback? onOpenExport;
@@ -363,7 +343,7 @@ class _DetailBody extends StatelessWidget {
             ),
           )
         else
-          ..._buildGroupedAmounts(amounts, busy, onDeleteAmount),
+          ..._buildGroupedAmounts(amounts, onEditAmount),
       ],
     );
   }
@@ -373,8 +353,7 @@ class _DetailBody extends StatelessWidget {
   /// 방어적으로 헤더는 "지출이 있으면 합계 / 없고 무지출만 있으면 '무지출'" 로 표기.
   List<Widget> _buildGroupedAmounts(
     List<Amount> all,
-    bool busy,
-    ValueChanged<Amount> onDelete,
+    ValueChanged<Amount> onEdit,
   ) {
     final byDay = <DateTime, List<Amount>>{};
     for (final a in all) {
@@ -402,7 +381,7 @@ class _DetailBody extends StatelessWidget {
       for (final a in dayAmounts) {
         widgets.add(_AmountTile(
           amount: a,
-          onDelete: busy ? null : () => onDelete(a),
+          onTap: () => onEdit(a),
         ));
       }
     }
@@ -720,10 +699,12 @@ class _DaySectionHeader extends StatelessWidget {
 }
 
 class _AmountTile extends StatelessWidget {
-  const _AmountTile({required this.amount, required this.onDelete});
+  const _AmountTile({required this.amount, required this.onTap});
 
   final Amount amount;
-  final VoidCallback? onDelete;
+
+  /// 탭 → 수정 화면 진입. 삭제도 수정 화면 안에서만 가능 (별도 X 버튼 없음).
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -731,6 +712,7 @@ class _AmountTile extends StatelessWidget {
     final hasVideo = amount.mediaFiles.isNotEmpty;
     return Card(
       child: ListTile(
+        onTap: onTap,
         leading: CircleAvatar(
           backgroundColor: amount.noSpend
               ? theme.colorScheme.secondaryContainer
@@ -759,21 +741,12 @@ class _AmountTile extends StatelessWidget {
             ],
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!amount.noSpend)
-              Text(
+        trailing: !amount.noSpend
+            ? Text(
                 formatWon(amount.amount),
                 style: theme.textTheme.titleSmall,
-              ),
-            IconButton(
-              tooltip: '삭제',
-              onPressed: onDelete,
-              icon: const Icon(Icons.close, size: 18),
-            ),
-          ],
-        ),
+              )
+            : null,
       ),
     );
   }

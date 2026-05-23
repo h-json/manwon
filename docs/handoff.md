@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-23 (**영상 합본 export 구현 완료**. 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 만들어 갤러리 저장·공유까지. 클라이언트 측 `ffmpeg_kit_flutter_new_video` + sw `mpeg4` 인코더. h264_mediacodec/libx264/libkvazaar 모두 실격 — 자세한 함정 경로는 "함정 — H.264/HEVC sw 인코더 다 막힘". 백엔드 보강: MediaController 의 LAZY 함정 회피 + 회귀 가드 테스트 2개 — **백엔드 테스트 79 그린** (단위 57 + 통합 17 + WebMvc 4 + 컨텍스트 1). 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
+마지막 갱신: 2026-05-23 (**영상 선택화 + 촬영 화면 분리 + 기록 수정 흐름 도입**. 회의록은 "기록 수정/촬영 분리 회의록" 항목 참고. 영상은 지출/무지출 양쪽 모두 선택, 촬영은 [AmountCameraScreen](../tenk_app/lib/presentation/amount/amount_camera_screen.dart) 전용 화면에서만, 기록 카드 탭 → [AmountEditScreen](../tenk_app/lib/presentation/amount/amount_edit_screen.dart) 으로 시간(지출만)/내용/메모/영상 수정 + 삭제. 백엔드 `AMOUNT_VIDEO_REQUIRED` 에러코드 제거 + `PUT /api/challenges/{cid}/amounts/{aid}` 추가. 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
 
 ---
 
@@ -131,7 +131,11 @@
 ### 2. 앱 UX 다듬기 (나머지)
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
 - **녹화 영상 미리보기** — 현재는 체크 아이콘만. `video_player` 는 이미 의존성에 들어와 있음 (영상 export result 화면용) — 재활용 가능.
+  - 관련: **촬영 직후 바로 재생** — `AmountCameraScreen` 에서 녹화 끝나면 그 자리에서 한 번 재생/확인 후 결정(사용/재촬영) 흐름. 현재는 pop 으로 path 만 반환하고 끝.
+- **카메라 탭하여 초점(tap-to-focus)** — `camera` 패키지 `CameraController.setFocusPoint(Offset)` + `setExposurePoint`. 프리뷰 GestureDetector 로 좌표 변환 (`Offset(dx/width, dy/height)` 정규화). 시각 피드백(초점 사각형 0.5초)도 같이.
+- **하단 시스템 바(제스처 내비/3-버튼) 가림** — 안드로이드 일부 기기에서 화면 하단 버튼이 시스템 내비게이션 바에 가려져 누르기 힘듦. 후보: ① `SafeArea` 점검 + bottomPadding 강제, ② 주요 액션을 상단 또는 FAB 로 이동, ③ `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` + 수동 inset 처리. 영향 화면 전수 점검 필요 (카메라 화면, 기록/수정 화면 등).
 - **영상 export 결과 카드** — 회의 보류 항목. 영상 끝 3초 결과 카드 vs 챌린지 확정 시 별도 화면. 챌린지 확정 화면 디자인과 같이 결정.
+- **목록에 메모 노출** — 챌린지 상세의 amount 목록 (`_AmountTile`) 에서 memo 가 있을 때 미리보기(1~2줄 ellipsis) 또는 메모 아이콘 배지. 결정 필요: 본문 노출이 좋은지 아이콘만 노출이 좋은지 (긴 메모가 목록 높이를 흔들 수 있음).
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
 
 ### 3. 페이지네이션 / 정렬
@@ -189,6 +193,59 @@
 3. 두 곳 바꾼 뒤 폰 브라우저로 `http://<IP>:8080/swagger-ui.html` 이 뜨는지 확인 (안 뜨면 PC Windows 방화벽 → inbound TCP 8080 허용)
 
 IP 확인: PowerShell `ipconfig` → "이더넷 어댑터 Wi-Fi" 의 IPv4 주소. 공유기 DHCP lease 가 갱신되면 바뀔 수 있으니 잘 안 되면 가장 먼저 의심할 것.
+
+---
+
+## 기록 수정/촬영 분리 회의록 (2026-05-23)
+
+> "지출은 영상 필수 / 카메라가 기록 화면에 인라인 / 등록 후 수정 불가" 세 가지를 한 번에 정리한 회의. 회의록 형식이 아니라 사용자 지시 → 명확화 질의 1회 → 합의된 결정의 요약.
+
+### 사용자 요구 (원문 요약)
+1. 영상 첨부는 지출/무지출 양쪽 모두 **선택**.
+2. 영상 촬영은 기록 화면 안이 아니라 **전용 카메라 화면**.
+3. 기록 카드 탭 → **수정 화면** 진입. 내용 + 영상 모두 수정 (영상은 추가/교체/삭제).
+
+### 결정 사항
+
+| # | 항목 | 결정 |
+|---|---|---|
+| 1 | 지출 영상 | 필수 → **선택**. 백엔드 `AMOUNT_VIDEO_REQUIRED` 에러코드 자체 삭제. `LocalFileStorage.store()` 의 null 가드는 호출자 책임으로 옮기고 들어오면 `INVALID_INPUT` (프로그래머 오류). |
+| 2 | 촬영 화면 분리 | 신규 [AmountCameraScreen](../tenk_app/lib/presentation/amount/amount_camera_screen.dart). `Navigator.pop<String>(path)` 로 결과 반환. 사용 안 한 임시 파일은 본인이 정리 (호출자 책임 X). |
+| 3 | 영상 첨부 UI 공용 | 신규 [VideoAttachmentSection](../tenk_app/lib/presentation/amount/widgets/video_attachment_section.dart). "없음 → 촬영하기 / 있음 → 다시 촬영 + 삭제" 두 상태만. record + edit 화면 공용. |
+| 4 | 수정 화면 진입 | 기록 카드 탭. 기존 카드의 X 삭제 버튼은 **제거** — 삭제는 수정 화면 안의 별도 버튼에서만. |
+| 5 | 지출 일시 수정 범위 | **시간만**, 날짜 고정. 백엔드 DTO 는 `LocalTime` 만 받고 기존 spentDt 의 LocalDate 와 결합. 날짜를 바꾸고 싶으면 삭제 후 재등록. (사용자 지시) |
+| 6 | 무지출 일시 수정 | 불가. 서버 now() 강제 그대로. 수정 화면에 일시 섹션 자체 숨김. |
+| 7 | 영상 액션 표현 | `videoAction: KEEP / REMOVE / REPLACE` enum. REPLACE 면 video part 필수. backend enum + Flutter enum 1:1 매칭. |
+| 8 | 배지 재평가 | **안 한다**. 수정에서는 날짜·noSpend 여부가 안 바뀌므로 STREAK/NO_SPEND 가 변할 수 없음. 영상만 바꿔도 마찬가지. |
+| 9 | 종료/시작 전 챌린지 | 수정도 record 와 동일하게 `CHALLENGE_ALREADY_FINISHED` / `CHALLENGE_NOT_STARTED` 로 막음. |
+| 10 | 응답 형태 | record 는 기존 `AmountRecordResult` 유지, update 는 갱신된 `AmountResponse` 단건. |
+
+### 동기 사유 (왜 이번에 바꾸나)
+- **영상 필수 강제는 마찰** — 2초 영상 자체가 부담스러운 사용자가 있어 진입을 가로막고 있었음. export 는 "있는 영상만 합친다" 정책이라 누락이 생겨도 파이프라인은 영향 없음.
+- **카메라 인라인은 폼을 무겁게** — 카메라 초기화 실패가 폼 입력 자체를 막는 케이스가 있었음. 단계 분리로 폼 / 촬영을 독립화.
+- **수정 불가의 비용 > 구현 비용** — 이미 `Amount.update()` 가 있었고 엔드포인트만 없는 상태였음. 영상 핸들링까지 합쳐도 PUT 하나로 끝남.
+
+### 백엔드 변경 요약
+- DTO: 신규 [AmountUpdateRequest](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/dto/AmountUpdateRequest.java) + `VideoAction` enum.
+- 엔드포인트: `PUT /api/challenges/{cid}/amounts/{aid}` (multipart, [AmountController.update](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/AmountController.java)).
+- 서비스: [AmountService.update](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/AmountService.java) — 소유권/상태 검증 + spentDt 시간 결합 + `applyVideoAction(KEEP/REMOVE/REPLACE)`.
+- 엔티티: [Amount.update](../tenk-backend/src/main/java/com/hjson/tenk/domain/amount/Amount.java) 시그니처에 `LocalDateTime spentDt` 추가 (지출만 검증·반영, 무지출은 무시).
+- 테스트: `AmountTest` 의 4-arg `update` 호출을 5-arg 로 갱신 + 일시 변경/범위 회귀 2개. `AmountServiceTest` 의 "영상 필수" 케이스 2개 뒤집기 + `update_*` 6개 추가.
+
+### 프론트 변경 요약
+- 데이터: [VideoAction enum](../tenk_app/lib/data/amount/amount.dart) + [AmountApi.update](../tenk_app/lib/data/amount/amount_api.dart) (`PUT` multipart).
+- 화면: [AmountCameraScreen](../tenk_app/lib/presentation/amount/amount_camera_screen.dart) 신설, [AmountEditScreen](../tenk_app/lib/presentation/amount/amount_edit_screen.dart) 신설, [AmountRecordScreen](../tenk_app/lib/presentation/amount/amount_record_screen.dart) 의 카메라 인라인 제거.
+- 공용 위젯: [VideoAttachmentSection](../tenk_app/lib/presentation/amount/widgets/video_attachment_section.dart) (record + edit 공유).
+- 챌린지 상세: `_AmountTile` 의 X 삭제 IconButton 제거 + `ListTile.onTap` 으로 수정 진입. `_buildGroupedAmounts` 시그니처에서 `busy` 인자 삭제, `onDelete` → `onEdit` 로 변경.
+
+### Verification 메모
+- 백엔드: `./gradlew.bat test --rerun-tasks` 통과.
+- Flutter: `flutter analyze` 통과 — 추가 lint 0건.
+- E2E: 에뮬레이터에서 영상 없이 지출 기록·수정·삭제·영상 추가/교체/삭제 모두 동작 확인 (2026-05-23). **주의**: 카메라 인라인 제거 + 필드 삭제는 구조적 변경이라 Flutter **hot reload 로는 안 들어감 — hot restart (`R`) 또는 풀 재실행 필수**. 카메라 프리뷰가 폼 안에 보이면 구코드 동작 중이므로 재시작 필요.
+
+### 알려진 갭
+- **PUT 엔드포인트 통합 테스트 없음** — 현재 [AmountServiceTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/amount/AmountServiceTest.java) 가 Mockito 단위 테스트라 multipart 파싱·`@Valid`·시큐리티 필터를 거치지 않는다. `AmountController.record/delete` 도 통합 테스트가 없어 컨벤션과는 일관이지만, multipart wiring 회귀를 잡을 가드가 없는 건 사실. 다음에 amount 컨트롤러 만질 일 있으면 [BadgeEventIntegrationTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/badge/BadgeEventIntegrationTest.java) 패턴으로 `AmountControllerIntegrationTest` 추가하는 게 좋음.
+- **추가하면 좋은 단위 케이스 5개** (서비스 레벨, 30분 분량): `update_on_not_started_challenge`, `update_amount_belongs_to_different_challenge`, `update_amount_not_found`, `update_spend_with_null_time_keeps_existing_spent_dt`, `update_video_replace_with_empty_video_throws_invalid_input`.
 
 ---
 

@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,16 +8,13 @@ import '../../data/amount/amount.dart';
 import '../../data/api/api_error.dart';
 import '../../data/challenge/challenge.dart';
 import '../challenge/_formatters.dart';
+import 'amount_camera_screen.dart';
+import 'widgets/video_attachment_section.dart';
 
-/// 지출/무지출 기록 + 영상 녹화 화면.
+/// 지출/무지출 기록 추가 화면. 영상 첨부는 양쪽 모두 **선택** ([AmountCameraScreen] 으로 위임).
 ///
-/// `noSpend = false`: 카테고리/내용/금액 + 영상 녹화 (필수)
-/// `noSpend = true` : 영상 녹화 (선택)
-///
-/// 일시는 [challenge.startDate, challenge.endDate] 범위 **날짜** 안에서만 고를 수 있다.
-/// 기본값 = 지금 (날짜가 챌린지 기간 밖이면 가장 가까운 챌린지 날짜로 clamp).
-/// 영상 사양: [ResolutionPreset.low] + 2초 타이머. 후처리 트랜스코딩 없음
-/// (CLAUDE.md "영상" 정책 참고).
+/// `noSpend = false`: 카테고리/내용/금액 입력 + 일시 (챌린지 기간 안)
+/// `noSpend = true` : 메모만 입력 (일시는 서버 now() 강제)
 class AmountRecordScreen extends StatefulWidget {
   const AmountRecordScreen({
     super.key,
@@ -35,8 +30,6 @@ class AmountRecordScreen extends StatefulWidget {
 }
 
 class _AmountRecordScreenState extends State<AmountRecordScreen> {
-  static const _recordDuration = Duration(seconds: 2);
-
   final _formKey = GlobalKey<FormState>();
   final _categoryController = TextEditingController();
   final _contentController = TextEditingController();
@@ -44,11 +37,6 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
   final _memoController = TextEditingController();
 
   late DateTime _spentDt;
-  CameraController? _camera;
-  Object? _cameraError;
-  bool _initializing = true;
-  bool _recording = false;
-  Timer? _stopTimer;
   String? _videoPath;
   bool _submitting = false;
 
@@ -56,7 +44,6 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
   void initState() {
     super.initState();
     _spentDt = _defaultSpentDt();
-    _initCamera();
   }
 
   /// 기본값: 지금. 날짜 부분이 챌린지 기간 밖이면 가장 가까운 챌린지 날짜로 옮기고 시각은 유지.
@@ -78,8 +65,8 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
 
   @override
   void dispose() {
-    _stopTimer?.cancel();
-    _camera?.dispose();
+    // 사용자가 촬영만 하고 저장 안 한 채 뒤로 가면 임시 파일 정리.
+    _disposeLocalVideo();
     _categoryController.dispose();
     _contentController.dispose();
     _amountController.dispose();
@@ -87,34 +74,11 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
     super.dispose();
   }
 
-  Future<void> _initCamera() async {
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        throw CameraException('no_camera', '사용 가능한 카메라를 찾지 못했어요.');
-      }
-      // 음성은 필요 없음 → enableAudio=false. RECORD_AUDIO 권한 안 떠도 통과되도록.
-      final controller = CameraController(
-        cameras.first,
-        ResolutionPreset.low,
-        enableAudio: false,
-      );
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _camera = controller;
-        _initializing = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _cameraError = e;
-        _initializing = false;
-      });
-    }
+  void _disposeLocalVideo() {
+    final path = _videoPath;
+    if (path == null) return;
+    File(path).delete().catchError((_) => File(path));
+    _videoPath = null;
   }
 
   Future<void> _pickDateTime() async {
@@ -135,62 +99,30 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
     });
   }
 
-  Future<void> _startRecording() async {
-    final camera = _camera;
-    if (camera == null || _recording) return;
-    setState(() {
-      _recording = true;
-      _videoPath = null;
-    });
-    try {
-      await camera.startVideoRecording();
-      _stopTimer = Timer(_recordDuration, _stopRecording);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _recording = false);
-      _showError('녹화 시작 실패: ${toApiException(e).message}');
-    }
+  Future<void> _openCamera() async {
+    final path = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => const AmountCameraScreen(),
+      ),
+    );
+    if (path == null || !mounted) return;
+    // 새 영상이 들어오면 이전 임시 파일은 폐기.
+    _disposeLocalVideo();
+    setState(() => _videoPath = path);
   }
 
-  Future<void> _stopRecording() async {
-    final camera = _camera;
-    if (camera == null || !_recording) return;
-    _stopTimer?.cancel();
-    _stopTimer = null;
-    try {
-      final file = await camera.stopVideoRecording();
-      if (!mounted) return;
-      setState(() {
-        _recording = false;
-        _videoPath = file.path;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _recording = false);
-      _showError('녹화 정지 실패: ${toApiException(e).message}');
-    }
-  }
-
-  void _discardRecording() {
-    final path = _videoPath;
-    if (path != null) {
-      // 임시 디렉토리에 저장된 파일 — 정리 실패는 무시.
-      File(path).delete().catchError((_) => File(path));
-    }
-    setState(() => _videoPath = null);
+  void _removeVideo() {
+    _disposeLocalVideo();
+    setState(() {});
   }
 
   Future<void> _submit() async {
     if (!widget.noSpend && !(_formKey.currentState?.validate() ?? false)) return;
-    if (!widget.noSpend && _videoPath == null) {
-      _showError('지출 기록은 영상이 필수예요.');
-      return;
-    }
     setState(() => _submitting = true);
     try {
       final api = AmountScope.of(context);
-      // 무지출은 일시 입력 불가 — 백엔드가 서버 now() 로 강제하므로 명시적으로 null 을 보낸다.
       final memo = _memoController.text.trim();
+      // 무지출은 일시 입력 불가 — 백엔드가 서버 now() 로 강제하므로 명시적으로 null 을 보낸다.
       final result = await api.record(
         challengeId: widget.challenge.id,
         noSpend: widget.noSpend,
@@ -202,6 +134,9 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
         videoPath: _videoPath,
       );
       if (!mounted) return;
+      // 업로드 성공 — 서버가 파일을 가져갔으니 로컬 임시 파일은 더 이상 필요 없음.
+      // _disposeLocalVideo 가 _videoPath 를 null 로 만들기 때문에 pop 전에 호출하면 안전.
+      _disposeLocalVideo();
       Navigator.of(context).pop<AmountRecordResult>(result);
     } catch (e) {
       if (!mounted) return;
@@ -229,7 +164,6 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
             padding: const EdgeInsets.all(24),
             children: [
               if (widget.noSpend) ...[
-                // 무지출은 일시 입력 불가 — 서버가 지금 시각을 박는다.
                 Text('오늘 무지출', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Text(
@@ -269,26 +203,13 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
-                widget.noSpend ? '영상 (선택)' : '영상 (필수, 2초)',
-                style: theme.textTheme.titleMedium,
-              ),
+              Text('영상 (선택, 2초)', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
-              _CameraSection(
-                initializing: _initializing,
-                error: _cameraError,
-                controller: _camera,
-                recording: _recording,
-                recordedPath: _videoPath,
-                onRecord: _startRecording,
-                onReRecord: _discardRecording,
-                onRetry: () {
-                  setState(() {
-                    _initializing = true;
-                    _cameraError = null;
-                  });
-                  _initCamera();
-                },
+              VideoAttachmentSection(
+                hasVideo: _videoPath != null,
+                fromServer: false,
+                onPickNew: _openCamera,
+                onRemove: _removeVideo,
               ),
               const SizedBox(height: 32),
               FilledButton(
@@ -390,121 +311,6 @@ class _DateTimeField extends StatelessWidget {
         ),
         child: Text(formatDateTime(dt)),
       ),
-    );
-  }
-}
-
-/// 카메라 상태(초기화 중 / 에러 / 대기 / 녹화 중 / 녹화 완료) UI.
-class _CameraSection extends StatelessWidget {
-  const _CameraSection({
-    required this.initializing,
-    required this.error,
-    required this.controller,
-    required this.recording,
-    required this.recordedPath,
-    required this.onRecord,
-    required this.onReRecord,
-    required this.onRetry,
-  });
-
-  final bool initializing;
-  final Object? error;
-  final CameraController? controller;
-  final bool recording;
-  final String? recordedPath;
-  final VoidCallback onRecord;
-  final VoidCallback onReRecord;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AspectRatio(
-      aspectRatio: 3 / 4,
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: _buildBody(context),
-      ),
-    );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    final theme = Theme.of(context);
-    if (initializing) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (error != null || controller == null) {
-      final msg = error == null
-          ? '카메라를 사용할 수 없어요.'
-          : '카메라 초기화 실패: ${toApiException(error!).message}';
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(msg, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.tonal(onPressed: onRetry, child: const Text('다시 시도')),
-          ],
-        ),
-      );
-    }
-    if (recordedPath != null) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.check_circle,
-              size: 64, color: theme.colorScheme.primary),
-          const SizedBox(height: 12),
-          const Text('2초 영상 녹화 완료'),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: onReRecord,
-            icon: const Icon(Icons.refresh),
-            label: const Text('다시 녹화'),
-          ),
-        ],
-      );
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CameraPreview(controller!),
-        if (recording)
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                shape: BoxShape.circle,
-              ),
-              child: const SizedBox(
-                width: 36,
-                height: 36,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 12,
-          child: Center(
-            child: FilledButton.icon(
-              onPressed: recording ? null : onRecord,
-              icon: Icon(recording ? Icons.fiber_manual_record : Icons.videocam),
-              label: Text(recording ? '녹화 중…' : '2초 녹화'),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

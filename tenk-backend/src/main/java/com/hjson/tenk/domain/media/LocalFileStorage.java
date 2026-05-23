@@ -35,8 +35,10 @@ public class LocalFileStorage {
     }
 
     public StoredFile store(MultipartFile file, String subdirectory) {
+        // 호출 책임: 영상 첨부 여부 분기는 도메인(AmountService)에서 처리.
+        // 여기 들어왔는데 비었으면 프로그래머 오류 → INVALID_INPUT 으로 짧게 막는다.
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.AMOUNT_VIDEO_REQUIRED);
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
         String originalName = file.getOriginalFilename();
         String extension = extractExtension(originalName);

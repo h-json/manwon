@@ -5,6 +5,8 @@ import com.hjson.tenk.common.exception.ErrorCode;
 import com.hjson.tenk.domain.amount.dto.AmountCreateRequest;
 import com.hjson.tenk.domain.amount.dto.AmountRecordResult;
 import com.hjson.tenk.domain.amount.dto.AmountResponse;
+import com.hjson.tenk.domain.amount.dto.AmountUpdateRequest;
+import com.hjson.tenk.domain.amount.dto.AmountUpdateRequest.VideoAction;
 import com.hjson.tenk.domain.amount.event.AmountRecordedEvent;
 import com.hjson.tenk.domain.challenge.Challenge;
 import com.hjson.tenk.domain.challenge.ChallengeService;
@@ -75,16 +77,9 @@ public class AmountService {
                         request.amount() == null ? -1 : request.amount(), request.memo(), spentDt);
         amountRepository.save(amount);
 
+        // 영상은 지출/무지출 모두 선택. 첨부된 경우에만 저장.
         List<MediaFile> savedFiles = Collections.emptyList();
-        if (!noSpend) {
-            if (video == null || video.isEmpty()) {
-                throw new BusinessException(ErrorCode.AMOUNT_VIDEO_REQUIRED);
-            }
-            StoredFile stored = storage.store(video, "amounts/" + challengeId);
-            MediaFile media = mediaFileRepository.save(
-                    MediaFile.create(amount, stored.relativePath(), stored.originalName()));
-            savedFiles = List.of(media);
-        } else if (video != null && !video.isEmpty()) {
+        if (video != null && !video.isEmpty()) {
             StoredFile stored = storage.store(video, "amounts/" + challengeId);
             MediaFile media = mediaFileRepository.save(
                     MediaFile.create(amount, stored.relativePath(), stored.originalName()));
@@ -111,6 +106,76 @@ public class AmountService {
             throw new BusinessException(ErrorCode.AMOUNT_NOT_FOUND);
         }
         deleteAmountWithMedia(amount);
+    }
+
+    /// 기록 수정. 시간(지출의 spentDt 의 LocalTime)/내용/메모/영상 변경.
+    /// 지출의 날짜는 변경 불가 (시간만) — 기존 spentDt 의 LocalDate 를 그대로 유지한다.
+    /// 무지출은 일시 자체가 서버 now() 강제이므로 request.time() 은 무시.
+    @Transactional
+    public AmountResponse update(Long userId, Long challengeId, Long amountId,
+                                 AmountUpdateRequest request, MultipartFile video) {
+        Amount amount = amountRepository.findById(amountId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AMOUNT_NOT_FOUND));
+        Challenge challenge = challengeService.loadOwned(userId, challengeId);
+        if (!amount.getChallenge().getId().equals(challenge.getId())) {
+            throw new BusinessException(ErrorCode.AMOUNT_NOT_FOUND);
+        }
+        LocalDate today = LocalDate.now();
+        if (challenge.isFinished(today)) {
+            throw new BusinessException(ErrorCode.CHALLENGE_ALREADY_FINISHED);
+        }
+        if (!challenge.isStarted(today)) {
+            throw new BusinessException(ErrorCode.CHALLENGE_NOT_STARTED);
+        }
+
+        // 지출: 기존 날짜 유지 + 새 시간 결합. 시간 미지정이면 기존 시각 유지.
+        // 무지출: spentDt 자체를 안 건드린다 (Amount.update 가 인자 무시).
+        LocalDateTime newSpentDt = amount.getSpentDt();
+        if (!amount.isNoSpend() && request.time() != null) {
+            newSpentDt = LocalDateTime.of(amount.getSpentDt().toLocalDate(), request.time());
+        }
+        // 무지출은 amount/category/content 를 항상 0/null 로 강제 — 클라이언트가 무엇을 보내든 무시.
+        // (Amount.update 의 noSpend 분기가 category/content 는 자체적으로 null 화 하지만
+        //  amount 인자는 0 만 허용하므로 여기서도 미리 0 으로 정규화한다.)
+        int normalizedAmount = amount.isNoSpend()
+                ? 0
+                : (request.amount() == null ? -1 : request.amount());
+        amount.update(
+                request.category(),
+                request.content(),
+                normalizedAmount,
+                request.memo(),
+                newSpentDt);
+
+        applyVideoAction(amount, challengeId, request.videoAction(), video);
+        return AmountResponse.of(amount, mediaFileRepository.findByAmount(amount));
+    }
+
+    private void applyVideoAction(Amount amount, Long challengeId,
+                                  VideoAction action, MultipartFile video) {
+        switch (action) {
+            case KEEP -> {
+                // no-op
+            }
+            case REMOVE -> deleteMediaOf(amount);
+            case REPLACE -> {
+                if (video == null || video.isEmpty()) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT);
+                }
+                deleteMediaOf(amount);
+                StoredFile stored = storage.store(video, "amounts/" + challengeId);
+                mediaFileRepository.save(
+                        MediaFile.create(amount, stored.relativePath(), stored.originalName()));
+            }
+        }
+    }
+
+    private void deleteMediaOf(Amount amount) {
+        List<MediaFile> existing = mediaFileRepository.findByAmount(amount);
+        for (MediaFile mediaFile : existing) {
+            storage.deleteQuietly(mediaFile.getFilePath());
+        }
+        mediaFileRepository.deleteByAmount(amount);
     }
 
     private List<Amount> findNoSpendOn(Challenge challenge, LocalDate day) {

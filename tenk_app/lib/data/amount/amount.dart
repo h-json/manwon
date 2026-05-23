@@ -1,5 +1,15 @@
 import 'package:flutter/foundation.dart';
 
+/// 기록 수정 시 영상 처리 방식. 백엔드 `AmountUpdateRequest.VideoAction` 과 1:1 매칭.
+enum VideoAction {
+  /// 기존 영상 유지 — video part 미전송
+  keep,
+  /// 기존 영상 + 디스크 파일 삭제 — video part 미전송
+  remove,
+  /// 기존 영상 삭제 후 새 video part 저장 (video part 필수)
+  replace,
+}
+
 @immutable
 class AmountMediaFile {
   const AmountMediaFile({

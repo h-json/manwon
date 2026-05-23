@@ -13,6 +13,9 @@ import com.hjson.tenk.common.exception.BusinessException;
 import com.hjson.tenk.common.exception.ErrorCode;
 import com.hjson.tenk.domain.amount.dto.AmountCreateRequest;
 import com.hjson.tenk.domain.amount.dto.AmountRecordResult;
+import com.hjson.tenk.domain.amount.dto.AmountResponse;
+import com.hjson.tenk.domain.amount.dto.AmountUpdateRequest;
+import com.hjson.tenk.domain.amount.dto.AmountUpdateRequest.VideoAction;
 import com.hjson.tenk.domain.amount.event.AmountRecordedEvent;
 import com.hjson.tenk.domain.challenge.Challenge;
 import com.hjson.tenk.domain.challenge.ChallengeService;
@@ -24,7 +27,9 @@ import com.hjson.tenk.domain.user.AuthProvider;
 import com.hjson.tenk.domain.user.User;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -109,24 +114,31 @@ class AmountServiceTest {
     }
 
     @Test
-    void record_spend_without_video_throws_video_required() {
+    void record_spend_without_video_succeeds_and_skips_storage() {
         given(challengeService.loadOwned(100L, 1L)).willReturn(ongoingChallenge());
         AmountCreateRequest req = new AmountCreateRequest("food", "lunch", 1_000, false, null, null);
 
-        assertThatThrownBy(() -> service.record(100L, 1L, req, null))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_VIDEO_REQUIRED);
+        AmountRecordResult result = service.record(100L, 1L, req, null);
+
+        assertThat(result.amount().noSpend()).isFalse();
+        assertThat(result.amount().mediaFiles()).isEmpty();
+        verify(amountRepository).save(any(Amount.class));
+        verify(storage, never()).store(any(), any());
+        verify(mediaFileRepository, never()).save(any());
+        verify(eventPublisher).publishEvent(any(AmountRecordedEvent.class));
     }
 
     @Test
-    void record_spend_with_empty_video_throws_video_required() {
+    void record_spend_with_empty_video_succeeds_and_skips_storage() {
         given(challengeService.loadOwned(100L, 1L)).willReturn(ongoingChallenge());
         AmountCreateRequest req = new AmountCreateRequest("food", "lunch", 1_000, false, null, null);
         MockMultipartFile empty = new MockMultipartFile("video", "clip.mp4", "video/mp4", new byte[0]);
 
-        assertThatThrownBy(() -> service.record(100L, 1L, req, empty))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_VIDEO_REQUIRED);
+        AmountRecordResult result = service.record(100L, 1L, req, empty);
+
+        assertThat(result.amount().mediaFiles()).isEmpty();
+        verify(storage, never()).store(any(), any());
+        verify(mediaFileRepository, never()).save(any());
     }
 
     @Test
@@ -198,6 +210,151 @@ class AmountServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_NO_SPEND_ALREADY_EXISTS);
         verify(amountRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void update_spend_changes_time_but_keeps_date() {
+        Challenge challenge = ongoingChallenge();
+        LocalDateTime original = LocalDate.now().atTime(9, 0);
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null, original);
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+        given(mediaFileRepository.findByAmount(existing)).willReturn(List.of());
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, "수정 메모", LocalTime.of(22, 30), VideoAction.KEEP);
+        AmountResponse res = service.update(100L, 1L, 42L, req, null);
+
+        assertThat(res.spentDt().toLocalDate()).isEqualTo(LocalDate.now());
+        assertThat(res.spentDt().getHour()).isEqualTo(22);
+        assertThat(res.spentDt().getMinute()).isEqualTo(30);
+        assertThat(res.memo()).isEqualTo("수정 메모");
+        verify(storage, never()).store(any(), any());
+        verify(storage, never()).deleteQuietly(any());
+    }
+
+    @Test
+    void update_video_keep_leaves_media_intact() {
+        Challenge challenge = ongoingChallenge();
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.KEEP);
+        service.update(100L, 1L, 42L, req, null);
+
+        verify(storage, never()).store(any(), any());
+        verify(storage, never()).deleteQuietly(any());
+        verify(mediaFileRepository, never()).deleteByAmount(any());
+        verify(mediaFileRepository, never()).save(any(MediaFile.class));
+    }
+
+    @Test
+    void update_video_remove_deletes_media_and_files() {
+        Challenge challenge = ongoingChallenge();
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+        MediaFile attached = mock(MediaFile.class);
+        given(attached.getFilePath()).willReturn("amounts/1/old.mp4");
+        given(mediaFileRepository.findByAmount(existing)).willReturn(List.of(attached));
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.REMOVE);
+        service.update(100L, 1L, 42L, req, null);
+
+        verify(storage).deleteQuietly("amounts/1/old.mp4");
+        verify(mediaFileRepository).deleteByAmount(existing);
+        verify(storage, never()).store(any(), any());
+    }
+
+    @Test
+    void update_video_replace_swaps_media_file() {
+        Challenge challenge = ongoingChallenge();
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+        MediaFile attached = mock(MediaFile.class);
+        given(attached.getFilePath()).willReturn("amounts/1/old.mp4");
+        given(mediaFileRepository.findByAmount(existing)).willReturn(List.of(attached));
+        given(storage.store(any(MultipartFile.class), any(String.class)))
+                .willReturn(new StoredFile("amounts/1/new.mp4", "clip.mp4"));
+        given(mediaFileRepository.save(any(MediaFile.class)))
+                .willAnswer(inv -> inv.getArgument(0));
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.REPLACE);
+        service.update(100L, 1L, 42L, req, videoPart());
+
+        verify(storage).deleteQuietly("amounts/1/old.mp4");
+        verify(mediaFileRepository).deleteByAmount(existing);
+        verify(storage).store(any(MultipartFile.class), any(String.class));
+        verify(mediaFileRepository).save(any(MediaFile.class));
+    }
+
+    @Test
+    void update_video_replace_without_video_part_throws_invalid_input() {
+        Challenge challenge = ongoingChallenge();
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.REPLACE);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT);
+    }
+
+    @Test
+    void update_no_spend_ignores_time_and_content_changes() {
+        Challenge challenge = ongoingChallenge();
+        LocalDateTime serverNow = LocalDate.now().atTime(8, 0);
+        Amount existing = Amount.noSpend(challenge, null, serverNow);
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+        given(mediaFileRepository.findByAmount(existing)).willReturn(List.of());
+
+        // 클라이언트가 time + category/content/amount 다 채워 보내도 무시.
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "snack", 500, "수정 메모", LocalTime.of(23, 59), VideoAction.KEEP);
+        AmountResponse res = service.update(100L, 1L, 42L, req, null);
+
+        assertThat(res.noSpend()).isTrue();
+        assertThat(res.category()).isNull();
+        assertThat(res.content()).isNull();
+        assertThat(res.amount()).isZero();
+        assertThat(res.memo()).isEqualTo("수정 메모");
+        assertThat(res.spentDt()).isEqualTo(serverNow);
+    }
+
+    @Test
+    void update_on_finished_challenge_throws_already_finished() {
+        Challenge finished = finishedChallenge();
+        Amount existing = Amount.spend(finished, "food", "lunch", 5_000, null,
+                finished.getStartDate().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(finished);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, LocalTime.of(10, 0), VideoAction.KEEP);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CHALLENGE_ALREADY_FINISHED);
     }
 
     @Test

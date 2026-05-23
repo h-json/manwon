@@ -30,7 +30,6 @@ public enum ErrorCode {
     CHALLENGE_NOT_STARTED(HttpStatus.BAD_REQUEST, "CH0005", "아직 시작하지 않은 챌린지입니다."),
 
     AMOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "A0001", "지출 기록을 찾을 수 없습니다."),
-    AMOUNT_VIDEO_REQUIRED(HttpStatus.BAD_REQUEST, "A0002", "지출 기록에는 영상이 1개 필요합니다."),
     AMOUNT_INVALID_SPEND_VALUE(HttpStatus.BAD_REQUEST, "A0003", "지출 금액은 0보다 커야 합니다."),
     AMOUNT_INVALID_NO_SPEND_VALUE(HttpStatus.BAD_REQUEST, "A0004", "무지출 기록의 금액은 0이어야 합니다."),
     AMOUNT_CATEGORY_CONTENT_REQUIRED(HttpStatus.BAD_REQUEST, "A0005", "지출 기록은 카테고리와 내용이 필요합니다."),

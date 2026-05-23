@@ -59,8 +59,61 @@ class AmountApi {
     return unwrapList(res.data).map(Amount.fromJson).toList(growable: false);
   }
 
+  /// 기록 수정. multipart PUT — `request` JSON part + 선택적 `video` part.
+  ///
+  /// - 지출: [hour]/[minute] 으로 시간만 변경 (날짜는 백엔드가 기존 spentDt 의 LocalDate 유지).
+  ///   둘 다 null 이면 백엔드에서 시간 변경 없음.
+  /// - 무지출: 시간/카테고리/내용/금액은 백엔드가 무시. memo 만 반영.
+  /// - 영상: [videoAction] 이 [VideoAction.replace] 면 [videoPath] 필수.
+  Future<Amount> update({
+    required int challengeId,
+    required int amountId,
+    required bool noSpend,
+    String? category,
+    String? content,
+    int? amount,
+    String? memo,
+    int? hour,
+    int? minute,
+    required VideoAction videoAction,
+    String? videoPath,
+  }) async {
+    final requestJson = jsonEncode({
+      'category': category,
+      'content': content,
+      'amount': amount,
+      'memo': memo,
+      'time': (hour != null && minute != null) ? _formatLocalTime(hour, minute) : null,
+      'videoAction': videoAction.name.toUpperCase(),
+    });
+    final parts = <String, dynamic>{
+      'request': MultipartFile.fromString(
+        requestJson,
+        contentType: DioMediaType('application', 'json'),
+      ),
+    };
+    if (videoAction == VideoAction.replace && videoPath != null) {
+      parts['video'] = await MultipartFile.fromFile(
+        videoPath,
+        contentType: DioMediaType('video', 'mp4'),
+      );
+    }
+    final form = FormData.fromMap(parts);
+    final res = await _dio.put(
+      '/api/challenges/$challengeId/amounts/$amountId',
+      data: form,
+    );
+    return Amount.fromJson(unwrapData(res.data));
+  }
+
   Future<void> delete({required int challengeId, required int amountId}) async {
     await _dio.delete('/api/challenges/$challengeId/amounts/$amountId');
+  }
+
+  /// 백엔드 `LocalTime` 은 `HH:mm:ss` 포맷을 기대한다.
+  static String _formatLocalTime(int hour, int minute) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(hour)}:${two(minute)}:00';
   }
 
   /// 백엔드 `LocalDateTime`은 타임존 없는 `yyyy-MM-ddTHH:mm:ss`를 기대.

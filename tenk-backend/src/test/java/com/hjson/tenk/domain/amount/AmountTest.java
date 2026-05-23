@@ -114,30 +114,56 @@ class AmountTest {
     @Test
     void update_on_noSpend_must_keep_amount_zero() {
         Challenge c = fiveDayChallenge();
-        Amount a = Amount.noSpend(c, null, c.getStartDate().atTime(20, 0));
-        assertThatThrownBy(() -> a.update(null, null, 500, null))
+        LocalDateTime original = c.getStartDate().atTime(20, 0);
+        Amount a = Amount.noSpend(c, null, original);
+        // spentDt 인자는 무지출에서 무시되더라도 시그니처 통과시켜야 한다.
+        assertThatThrownBy(() -> a.update(null, null, 500, null, original))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_INVALID_NO_SPEND_VALUE);
-        a.update("ignored", "ignored", 0, "수정된 메모");
+        // 인자로 다른 일시를 박아도 무지출은 spentDt 를 갱신하지 않는다.
+        LocalDateTime ignoredNew = c.getEndDate().atTime(23, 0);
+        a.update("ignored", "ignored", 0, "수정된 메모", ignoredNew);
         assertThat(a.getCategory()).isNull();
         assertThat(a.getContent()).isNull();
         assertThat(a.getAmount()).isZero();
         assertThat(a.getMemo()).isEqualTo("수정된 메모");
+        assertThat(a.getSpentDt()).isEqualTo(original);
     }
 
     @Test
     void update_on_spend_validates_positive_and_fields() {
         Challenge c = fiveDayChallenge();
-        Amount a = Amount.spend(c, "food", "lunch", 5_000, null, c.getStartDate().atTime(9, 0));
-        assertThatThrownBy(() -> a.update("food", "dinner", 0, null))
+        LocalDateTime when = c.getStartDate().atTime(9, 0);
+        Amount a = Amount.spend(c, "food", "lunch", 5_000, null, when);
+        assertThatThrownBy(() -> a.update("food", "dinner", 0, null, when))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_INVALID_SPEND_VALUE);
-        assertThatThrownBy(() -> a.update("", "dinner", 1_000, null))
+        assertThatThrownBy(() -> a.update("", "dinner", 1_000, null, when))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_CATEGORY_CONTENT_REQUIRED);
-        a.update("food", "dinner", 7_000, "야근");
+        a.update("food", "dinner", 7_000, "야근", when);
         assertThat(a.getContent()).isEqualTo("dinner");
         assertThat(a.getAmount()).isEqualTo(7_000);
         assertThat(a.getMemo()).isEqualTo("야근");
+    }
+
+    @Test
+    void update_on_spend_can_change_spent_dt_within_range() {
+        Challenge c = fiveDayChallenge();
+        LocalDateTime original = c.getStartDate().atTime(9, 0);
+        Amount a = Amount.spend(c, "food", "lunch", 5_000, null, original);
+        LocalDateTime laterSameRange = c.getStartDate().plusDays(1).atTime(22, 30);
+        a.update("food", "lunch", 5_000, null, laterSameRange);
+        assertThat(a.getSpentDt()).isEqualTo(laterSameRange);
+    }
+
+    @Test
+    void update_on_spend_rejects_spent_dt_out_of_range() {
+        Challenge c = fiveDayChallenge();
+        Amount a = Amount.spend(c, "food", "lunch", 5_000, null, c.getStartDate().atTime(9, 0));
+        LocalDateTime afterEnd = c.getEndDate().plusDays(1).atTime(0, 0);
+        assertThatThrownBy(() -> a.update("food", "lunch", 5_000, null, afterEnd))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_DATE_OUT_OF_RANGE);
     }
 }
