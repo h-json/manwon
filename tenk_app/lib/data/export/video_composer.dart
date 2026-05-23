@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/painting.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../presentation/challenge/export/export_plan.dart';
@@ -12,8 +13,8 @@ import '../../presentation/challenge/export/export_plan.dart';
 /// 영상 합본 합성 서비스. ffmpeg_kit_flutter_new_video (LGPL) 위에 얇게 올린 래퍼.
 ///
 /// 파이프라인 (2-pass):
-///  1. **normalize**: 클립 단위로 864x480 / 2초 / 자막+대시보드 burn-in / MPEG-4 Part 2(`mpeg4`) 로
-///     정규화. 텍스트 카드 클립(무지출+영상없음)은 ffmpeg `color` lavfi 소스로 검은 배경 생성.
+///  1. **normalize**: 클립 단위로 480x864 (세로) / 2초 / 자막+대시보드 burn-in / MPEG-4 Part 2(`mpeg4`)
+///     로 정규화. 텍스트 카드 클립(무지출+영상없음)은 ffmpeg `color` lavfi 소스로 검은 배경 생성.
 ///  2. **concat**: 정규화된 클립들을 0.3초 cross-fade 로 이어붙임. 출력은 MPEG-4 Part 2 / yuv420p / -an,
 ///     MP4 컨테이너.
 ///
@@ -25,13 +26,13 @@ import '../../presentation/challenge/export/export_plan.dart';
 class VideoComposer {
   VideoComposer();
 
-  // 864 = 16×54. HEVC/H.264 sw 인코더 모두 16-pixel 정렬된 폭에서 가장 안정적 — 854 같은 어정쩡한 값
-  // 보다 한 줄 위로 맞춤.
-  static const int _outWidth = 864;
-  static const int _outHeight = 480;
+  // 모바일 카메라가 세로로 녹화하므로 출력도 세로(480x864 = 9:16에 가까운 5:9). 가로 출력이면
+  // 좌우에 검은 패딩이 생긴다.
+  // 864 = 16×54, 480 = 16×30 — 16-pixel 정렬이라 sw 인코더 안정성 OK.
+  static const int _outWidth = 480;
+  static const int _outHeight = 864;
   static const double _clipDurationSec = 2.0;
   static const double _xfadeDurationSec = 0.3;
-  static const String _fontAssetPath = 'assets/fonts/Korean.ttf';
   static const String _videoBitrate = '1500k';
 
   // ffmpeg 내장 MPEG-4 Part 2 sw 인코더. LGPL, 외부 라이브러리 의존 0, 검증된 안정성.
@@ -68,13 +69,10 @@ class VideoComposer {
       throw const VideoComposeFailed('합본에 포함된 클립이 없어요.');
     }
 
-    // 1. 폰트 자산을 ffmpeg 가 읽을 수 있는 파일 경로로 복사 (assets bundle 은 네이티브에서 직접 못 읽음).
-    final fontPath = await _materializeFontAsset();
-
     final tmpDir = await _ensureWorkDir(challengeStartDate);
     final normalizedPaths = <String>[];
 
-    // 2. Pass 1 — 클립별 정규화.
+    // 1. Pass 1 — 클립별 정규화. 자막은 Flutter TextPainter 로 PNG 그려 overlay 합성 (drawtext 미사용).
     final dashboardTexts = _buildDashboardTexts(plan, challengeTargetAmount, challengeStartDate);
     for (var i = 0; i < plan.clips.length; i++) {
       _throwIfCancelled();
@@ -89,7 +87,6 @@ class VideoComposer {
       await _normalizeClip(
         clip: clip,
         dashboardText: dashboardTexts[i],
-        fontPath: fontPath,
         outputPath: outPath,
       );
       normalizedPaths.add(outPath);
@@ -147,30 +144,6 @@ class VideoComposer {
     return dir;
   }
 
-  Future<String> _materializeFontAsset() async {
-    final tmp = await getTemporaryDirectory();
-    final out = File('${tmp.path}/tenk_export/Korean.ttf');
-    if (!await out.exists()) {
-      // rootBundle.load 실패 (자산 누락) vs 파일 쓰기 실패 를 분리해서 메시지에 노출. 광범위 catch 가
-      // 진짜 원인을 가리는 케이스를 봤음 — 자산 추가 후에도 "폰트 없어요" 가 떠 사용자 혼란.
-      ByteData bytes;
-      try {
-        bytes = await rootBundle.load(_fontAssetPath);
-      } catch (e) {
-        throw MissingFontException(
-            'rootBundle.load 실패 — pubspec.yaml 에 assets/fonts/ 등록됐는지, '
-            '앱을 cold restart 했는지 확인. 원인: $e');
-      }
-      try {
-        await out.parent.create(recursive: true);
-        await out.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
-      } catch (e) {
-        throw VideoComposeFailed('폰트를 임시 디렉토리에 복사 실패: $e');
-      }
-    }
-    return out.path;
-  }
-
   /// 클립별 대시보드 텍스트 ("Day N · 잔여 X,XXX원"). 시간 순서 가정. 무지출이면 잔액 변화 없음.
   List<String> _buildDashboardTexts(
       ExportPlan plan, int targetAmount, DateTime startDate) {
@@ -195,41 +168,37 @@ class VideoComposer {
   Future<void> _normalizeClip({
     required ExportClipPlan clip,
     required String dashboardText,
-    required String fontPath,
     required String outputPath,
   }) async {
-    final subtitle = _escapeDrawtext(clip.comment);
-    final dashboard = _escapeDrawtext(dashboardText);
-    final fontEsc = _escapePath(fontPath);
-
-    final drawtextDashboard =
-        "drawtext=fontfile='$fontEsc':text='$dashboard'"
-        ':fontcolor=white:fontsize=28'
-        ':x=(w-text_w)/2:y=24'
-        ':box=1:boxcolor=black@0.55:boxborderw=10';
-    final drawtextSubtitle =
-        "drawtext=fontfile='$fontEsc':text='$subtitle'"
-        ':fontcolor=white:fontsize=32'
-        ':x=(w-text_w)/2:y=h-text_h-32'
-        ':box=1:boxcolor=black@0.55:boxborderw=10';
+    // 자막은 Flutter TextPainter 로 PNG 를 만들고 ffmpeg overlay 로 합성한다.
+    // 사유: ffmpeg 8.0 drawtext 가 multi-codepoint 한글에서 첫 글리프만 그리고 뒤를 silent drop 시키는
+    // 회귀가 있어 (text_shaping=0/expansion=none 모두 무효). PNG overlay 는 텍스트 렌더링을 Flutter/Skia
+    // 에 맡겨서 그 경로 자체를 우회. 자세한 진단 경로는 [docs/handoff.md](docs/handoff.md) 참고.
+    final textPngPath = '$outputPath.text.png';
+    await _renderTextOverlayPng(
+      dashboardText: dashboardText,
+      subtitleText: clip.comment,
+      outputPath: textPngPath,
+    );
 
     final localPath = clip.localVideoPath;
+    final pngEsc = _escapePath(textPngPath);
+    final outEsc = _escapePath(outputPath);
     final List<String> cmd;
     if (localPath != null) {
-      // 영상 클립: scale+pad → SAR 정리 → drawtext → 인코더 픽셀 포맷 정합.
+      // 영상 클립: scale+pad → SAR 정리 → 자막 PNG overlay → 인코더 픽셀 포맷 정합.
       final inEsc = _escapePath(localPath);
-      final outEsc = _escapePath(outputPath);
-      final filter = 'scale=$_outWidth:$_outHeight:force_original_aspect_ratio=decrease,'
-          'pad=$_outWidth:$_outHeight:(ow-iw)/2:(oh-ih)/2:black,'
-          'setsar=1,'
-          '$drawtextDashboard,'
-          '$drawtextSubtitle,'
-          'format=$_outPixFmt';
       cmd = [
         '-y',
         '-i', inEsc,
+        '-i', pngEsc,
         '-t', _clipDurationSec.toString(),
-        '-vf', filter,
+        '-filter_complex',
+        '[0:v]scale=$_outWidth:$_outHeight:force_original_aspect_ratio=decrease,'
+            'pad=$_outWidth:$_outHeight:(ow-iw)/2:(oh-ih)/2:black,'
+            'setsar=1[v];'
+            '[v][1:v]overlay=0:0:format=auto,format=$_outPixFmt[outv]',
+        '-map', '[outv]',
         '-an',
         '-c:v', _videoEncoder,
         '-b:v', _videoBitrate,
@@ -237,13 +206,15 @@ class VideoComposer {
         outEsc,
       ];
     } else {
-      // 텍스트 카드: lavfi color 소스 + drawtext. 회의 결정 #8 (무지출+영상없음 → 2초 텍스트 카드).
-      final outEsc = _escapePath(outputPath);
+      // 텍스트 카드: lavfi color 소스 + 자막 PNG overlay. 회의 결정 #8 (무지출+영상없음 → 2초 텍스트 카드).
       cmd = [
         '-y',
         '-f', 'lavfi',
         '-i', 'color=c=black:s=${_outWidth}x$_outHeight:d=$_clipDurationSec:r=30',
-        '-vf', '$drawtextDashboard,$drawtextSubtitle,format=$_outPixFmt',
+        '-i', pngEsc,
+        '-filter_complex',
+        '[0:v][1:v]overlay=0:0:format=auto,format=$_outPixFmt[outv]',
+        '-map', '[outv]',
         '-an',
         '-c:v', _videoEncoder,
         '-b:v', _videoBitrate,
@@ -252,6 +223,87 @@ class VideoComposer {
     }
 
     await _runFfmpeg(cmd);
+  }
+
+  /// 480x864 투명 PNG 위에 대시보드(상단) + 자막(하단) + 반투명 박스를 그려 [outputPath] 에 저장.
+  /// 픽셀 좌표·폰트 크기는 기존 drawtext 와 동일하게 맞춤 (24px top margin, 32px bottom margin,
+  /// dashboard fontsize=28, subtitle fontsize=32, box padding=10, boxcolor=black@0.55).
+  Future<void> _renderTextOverlayPng({
+    required String dashboardText,
+    required String subtitleText,
+    required String outputPath,
+  }) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, _outWidth.toDouble(), _outHeight.toDouble()),
+    );
+
+    _drawTextBlock(canvas, dashboardText, fontSize: 28, topY: 24);
+    _drawTextBlock(
+      canvas,
+      subtitleText,
+      fontSize: 32,
+      bottomY: _outHeight - 32,
+    );
+
+    final picture = recorder.endRecording();
+    try {
+      final image = await picture.toImage(_outWidth, _outHeight);
+      try {
+        final byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) {
+          throw const VideoComposeFailed('자막 PNG 변환 실패 (byteData null)');
+        }
+        await File(outputPath)
+            .writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      } finally {
+        image.dispose();
+      }
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  /// 흰 글자 + 반투명 검정 박스. [topY] 또는 [bottomY] 중 하나만 지정 (anchor).
+  void _drawTextBlock(
+    ui.Canvas canvas,
+    String text, {
+    required double fontSize,
+    double? topY,
+    double? bottomY,
+  }) {
+    assert((topY == null) != (bottomY == null), 'topY 또는 bottomY 둘 중 하나만');
+    const padding = 10.0; // drawtext boxborderw=10 과 동일
+
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: const Color(0xFFFFFFFF),
+          fontSize: fontSize,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    );
+    painter.layout(maxWidth: _outWidth.toDouble() - 2 * padding - 20);
+
+    final textX = (_outWidth - painter.width) / 2;
+    final textY = topY ?? (bottomY! - painter.height);
+
+    final boxRect = Rect.fromLTWH(
+      textX - padding,
+      textY - padding,
+      painter.width + padding * 2,
+      painter.height + padding * 2,
+    );
+    final boxPaint = Paint()..color = const Color(0x8C000000); // black @ 0.55
+    canvas.drawRect(boxRect, boxPaint);
+
+    painter.paint(canvas, Offset(textX, textY));
+    painter.dispose();
   }
 
   Future<void> _concatWithXfade({
@@ -306,21 +358,13 @@ class VideoComposer {
     if (!ReturnCode.isSuccess(code)) {
       // 출력 로그를 일부 담아서 디버그 친화적으로.
       final log = await session.getAllLogsAsString() ?? '';
-      final trimmed = log.length > 800 ? '${log.substring(log.length - 800)}…' : log;
+      final trimmed =
+          log.length > 800 ? '${log.substring(log.length - 800)}…' : log;
       throw VideoComposeFailed('ffmpeg 실패 (code=${code?.getValue()}). 로그 끝부분:\n$trimmed');
     }
   }
 
-  /// drawtext text 값에 들어가는 문자열 이스케이프. ffmpeg drawtext 는 `:`, `'`, `\`, `%` 가 메타.
-  static String _escapeDrawtext(String input) {
-    return input
-        .replaceAll('\\', '\\\\\\\\')
-        .replaceAll(':', '\\:')
-        .replaceAll("'", "\\'")
-        .replaceAll('%', '\\%');
-  }
-
-  /// Windows 백슬래시 경로를 ffmpeg drawtext 가 받아먹는 형태로 — 일단 그대로 통과
+  /// Windows 백슬래시 경로를 ffmpeg 가 받아먹는 형태로 — 일단 그대로 통과
   /// (대부분의 dart:io 경로는 `/` 로 정상). 향후 Windows 환경 테스트 시 다시 점검.
   static String _escapePath(String input) => input.replaceAll('\\', '/');
 
@@ -375,16 +419,4 @@ class VideoComposeFailed implements Exception {
   final String message;
   @override
   String toString() => 'VideoComposeFailed: $message';
-}
-
-/// 한글 폰트 자산이 없을 때. `tenk_app/assets/fonts/Korean.ttf` 가 필요.
-/// [detail] 은 디버그용 컨텍스트 (rootBundle.load 의 실제 에러 메시지 등). UI 에는 상위 레이어가
-/// 더 친화적인 메시지로 감싸 보여준다.
-class MissingFontException implements Exception {
-  const MissingFontException([this.detail]);
-  final String? detail;
-  @override
-  String toString() => detail == null
-      ? 'MissingFontException: assets/fonts/Korean.ttf 가 없어요. README 참고.'
-      : 'MissingFontException: $detail';
 }

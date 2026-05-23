@@ -83,16 +83,6 @@ class _ExportComposeScreenState extends State<ExportComposeScreen> {
     } on VideoComposeCancelled {
       if (!mounted) return;
       setState(() => _phase = _Phase.cancelled);
-    } on MissingFontException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _phase = _Phase.error;
-        // detail 이 있으면 (rootBundle 실제 에러 등) 사용자에게도 노출해 자산 추가 후 cold restart 누락 등 디버깅 단서 제공.
-        final hint = e.detail == null
-            ? 'tenk_app/assets/fonts/Korean.ttf 를 추가해주세요.'
-            : '${e.detail}\n\n폰트를 막 추가했다면 앱을 완전히 종료(q) 후 flutter run 다시 — hot reload/restart 로는 새 자산이 안 잡힐 수 있어요.';
-        _errorMessage = '한글 폰트가 없어서 자막을 그릴 수 없어요.\n$hint';
-      });
     } on VideoComposeFailed catch (e) {
       if (!mounted) return;
       setState(() {
