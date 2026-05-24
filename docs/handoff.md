@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-23 (**영상 선택화 + 촬영 화면 분리 + 기록 수정 흐름 도입**. 회의록은 "기록 수정/촬영 분리 회의록" 항목 참고. 영상은 지출/무지출 양쪽 모두 선택, 촬영은 [AmountCameraScreen](../tenk_app/lib/presentation/amount/amount_camera_screen.dart) 전용 화면에서만, 기록 카드 탭 → [AmountEditScreen](../tenk_app/lib/presentation/amount/amount_edit_screen.dart) 으로 시간(지출만)/내용/메모/영상 수정 + 삭제. 백엔드 `AMOUNT_VIDEO_REQUIRED` 에러코드 제거 + `PUT /api/challenges/{cid}/amounts/{aid}` 추가. 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
+마지막 갱신: 2026-05-24 (**촬영 영상 미리보기 + 수정 화면 영상 미리보기 화면 도입**. 카메라 화면은 녹화 직후 `video_player` 로 자동 loop 재생 (체크 아이콘 폐기). 수정 화면의 영상 섹션은 collapsed-by-default — "영상 보기" 탭 시 신규 [AmountVideoPreviewScreen](../tenk_app/lib/presentation/amount/amount_video_preview_screen.dart) 으로 영상 + 다시 촬영/삭제 노출. 서버 영상은 lazy 다운로드 + tmp 캐시 + dispose 정리, 다운로드 전 잔재 선삭제 + 사이즈 검증으로 깨진 캐시 차단. 같은 갱신에서 AmountService.update 단위 테스트 5개 보강 (백엔드 84개 그린). 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
 
 ---
 
@@ -20,7 +20,7 @@
    - 동의 항목에서 `프로필 정보(닉네임)`, `카카오계정(이메일)` 활성화
    - 앱 키의 **앱 ID(숫자)**를 `tenk-backend/src/main/resources/application.yaml`의 `tenk.auth.kakao.app-id`에 박기 (server-side `access_token_info`의 `app_id`와 매칭 검증용)
 5. 백엔드 실행: `cd tenk-backend && ./gradlew.bat bootRun` → `http://localhost:8080/swagger-ui.html`
-6. 백엔드 테스트: `cd tenk-backend && ./gradlew.bat test` (총 79개 그린 — 단위 57 + 통합 17 + WebMvc 4 + ContextLoads 1). ⚠️ **테스트 실행 시 로컬 `tenk` DB의 user/challenge/amount/challenge_badge/refresh_token 데이터가 비워진다** (badge 마스터는 유지). Flutter 재로그인으로 복구 가능
+6. 백엔드 테스트: `cd tenk-backend && ./gradlew.bat test` (총 84개 그린 — 단위 62 + 통합 17 + WebMvc 4 + ContextLoads 1). ⚠️ **테스트 실행 시 로컬 `tenk` DB의 user/challenge/amount/challenge_badge/refresh_token 데이터가 비워진다** (badge 마스터는 유지). Flutter 재로그인으로 복구 가능
 7. **Flutter 앱 셋업** (앱 작업까지 할 거면):
    - 새 머신의 `~/.android/debug.keystore`에서 키해시 추출:
      `keytool -exportcert -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android -keypass android | openssl sha1 -binary | openssl base64` (Git Bash). PowerShell `Get-FileHash` 안 됨 — [[reference-kakao-android-keyhash]] 참고.
@@ -245,7 +245,6 @@ IP 확인: PowerShell `ipconfig` → "이더넷 어댑터 Wi-Fi" 의 IPv4 주소
 
 ### 알려진 갭
 - **PUT 엔드포인트 통합 테스트 없음** — 현재 [AmountServiceTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/amount/AmountServiceTest.java) 가 Mockito 단위 테스트라 multipart 파싱·`@Valid`·시큐리티 필터를 거치지 않는다. `AmountController.record/delete` 도 통합 테스트가 없어 컨벤션과는 일관이지만, multipart wiring 회귀를 잡을 가드가 없는 건 사실. 다음에 amount 컨트롤러 만질 일 있으면 [BadgeEventIntegrationTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/badge/BadgeEventIntegrationTest.java) 패턴으로 `AmountControllerIntegrationTest` 추가하는 게 좋음.
-- **추가하면 좋은 단위 케이스 5개** (서비스 레벨, 30분 분량): `update_on_not_started_challenge`, `update_amount_belongs_to_different_challenge`, `update_amount_not_found`, `update_spend_with_null_time_keeps_existing_spent_dt`, `update_video_replace_with_empty_video_throws_invalid_input`.
 
 ---
 

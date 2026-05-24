@@ -358,6 +358,95 @@ class AmountServiceTest {
     }
 
     @Test
+    void update_on_not_started_challenge_throws_not_started() {
+        Challenge notStarted = notStartedChallenge();
+        Amount existing = Amount.spend(ongoingChallenge(), "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        ReflectionTestUtils.setField(existing, "challenge", notStarted);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(notStarted);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, LocalTime.of(10, 0), VideoAction.KEEP);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CHALLENGE_NOT_STARTED);
+    }
+
+    @Test
+    void update_amount_not_found_throws() {
+        given(amountRepository.findById(42L)).willReturn(Optional.empty());
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.KEEP);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_NOT_FOUND);
+        verify(challengeService, never()).loadOwned(any(), any());
+    }
+
+    @Test
+    void update_amount_belongs_to_different_challenge_throws_not_found() {
+        Challenge requested = ongoingChallenge();
+        Challenge other = ongoingChallenge();
+        ReflectionTestUtils.setField(other, "id", 999L);
+        Amount existing = Amount.spend(other, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(requested);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.KEEP);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.AMOUNT_NOT_FOUND);
+        verify(storage, never()).store(any(), any());
+        verify(storage, never()).deleteQuietly(any());
+    }
+
+    @Test
+    void update_spend_with_null_time_keeps_existing_spent_dt() {
+        Challenge challenge = ongoingChallenge();
+        LocalDateTime original = LocalDate.now().atTime(9, 15, 30);
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null, original);
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+        given(mediaFileRepository.findByAmount(existing)).willReturn(List.of());
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, "메모만 변경", null, VideoAction.KEEP);
+        AmountResponse res = service.update(100L, 1L, 42L, req, null);
+
+        assertThat(res.spentDt()).isEqualTo(original);
+        assertThat(res.memo()).isEqualTo("메모만 변경");
+    }
+
+    @Test
+    void update_video_replace_with_empty_video_throws_invalid_input() {
+        Challenge challenge = ongoingChallenge();
+        Amount existing = Amount.spend(challenge, "food", "lunch", 5_000, null,
+                LocalDate.now().atTime(9, 0));
+        ReflectionTestUtils.setField(existing, "id", 42L);
+        given(amountRepository.findById(42L)).willReturn(Optional.of(existing));
+        given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
+
+        AmountUpdateRequest req = new AmountUpdateRequest(
+                "food", "lunch", 5_000, null, null, VideoAction.REPLACE);
+        MockMultipartFile empty = new MockMultipartFile("video", "clip.mp4", "video/mp4", new byte[0]);
+
+        assertThatThrownBy(() -> service.update(100L, 1L, 42L, req, empty))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_INPUT);
+        verify(storage, never()).store(any(), any());
+    }
+
+    @Test
     void record_spend_deletes_same_day_no_spend_and_reports_count() {
         Challenge challenge = ongoingChallenge();
         given(challengeService.loadOwned(100L, 1L)).willReturn(challenge);
