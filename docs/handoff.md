@@ -3,7 +3,11 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-25 (**배지 획득 풀스크린 축하 모달 도입 (Lottie)**. 챌린지 응답의 신규 배지를 챌린지 상세 화면에서 감지 → 풀스크린 모달로 배지 elasticOut 줌·wobble·글로우 + 햅틱 + Lottie 컨페티 overlay + "🎉 배지 획득!" + label. diff 는 `_knownBadgeIds` (challengeBadgeId 기반) + `_baselineSet` 으로 첫 로드는 baseline 만 채우고 과거 배지는 다시 축하하지 않음. 트리거 지점은 ChallengeDetailScreen 만 — 메인/홈 등 다른 진입점은 추후 BadgeNotifier 로 승격할 때 같이. `confetti.json` 자산은 사용자가 LottieFiles 무료 에셋 받아 넣는 구조, 없으면 컨페티만 조용히 생략. 다음 우선순위: 결과 카드 회의)
+마지막 갱신: 2026-05-25 (**카메라 녹화 시작 UX — transitional morph + audioplayers chime**. ① 애니메이션: 대기 구간을 idle UI 와 recording UI 를 잇는 단방향 morph 로 통일 — 안쪽 빨간 원(56px) → 둥근 사각형(28px) 3구간 piecewise (12% anticipation, 73% main morph, 15% snap = scale 1→1.15→1). 라디오 링·preview 글로우·심박 펄스 시도했다가 제거 (정지 효과로 읽혀 의도 전달 X). ② 사운드: `SystemSound`/`HapticFeedback` 으론 안 들려서 `audioplayers ^6.1.0` + 자체 PowerShell 합성 WAV 로 정착. 함정: `PlayerMode.lowLatency` 는 `setSource` 미지원이라 사전 로드 패턴 쓰려면 기본 MediaPlayer 모드 유지할 것. 1차 1200Hz 순수 sine 은 "기계음" 피드백 받아 종소리 chime (fundamental + 1500/2200Hz 하모닉 + exponential decay + 도입 pitch chirp, 280ms, ~12KB) 으로 교체. 다음 우선순위: 효과음 자체를 royalty-free 또는 합성 재설계로 더 효과음답게 (handoff "남은 일" #1))
+
+이전 갱신: 2026-05-25 (**카메라 녹화 시작 UX — preview freeze 제거 + 준비 중 오버레이**. ① UX 마스킹: `_starting` 동안 프리뷰 위 dim + "녹화 준비 중" 오버레이 + 녹화 버튼 안 빨간 점 심박 펄스 (`_pulseController`). 예전 `CircularProgressIndicator` 는 "로딩 중" 으로 읽혀서 교체. ② 원인 제거: `camera_android_camerax 0.7.2` fork — `initializeCamera` 의 `bindToLifecycle` 에서 `imageAnalysis` 자리에 `videoCapture` 를 넣어 eager bind + `stopVideoRecording` 의 unbind 제거. 두 군데 `[tenk fork patch]` 주석. CameraX 의 lazy bind 가 매 녹화 시작마다 capture session 을 재구성해 preview freeze 를 유발하는 원인을 제거. pubspec.yaml `dependency_overrides` 로 vendor 주입. 다음 우선순위: 실기기에서 freeze 가 실제로 사라졌는지 확인 + `_encoderStartLag` 1초가 여전히 필요한지 재측정)
+
+이전 갱신: 2026-05-25 (**배지 획득 풀스크린 축하 모달 도입 (Lottie)**. 챌린지 응답의 신규 배지를 챌린지 상세 화면에서 감지 → 풀스크린 모달로 배지 elasticOut 줌·wobble·글로우 + 햅틱 + Lottie 컨페티 overlay + "🎉 배지 획득!" + label. diff 는 `_knownBadgeIds` (challengeBadgeId 기반) + `_baselineSet` 으로 첫 로드는 baseline 만 채우고 과거 배지는 다시 축하하지 않음. 트리거 지점은 ChallengeDetailScreen 만 — 메인/홈 등 다른 진입점은 추후 BadgeNotifier 로 승격할 때 같이. `confetti.json` 자산은 사용자가 LottieFiles 무료 에셋 받아 넣는 구조, 없으면 컨페티만 조용히 생략. 다음 우선순위: 결과 카드 회의)
 
 ---
 
@@ -91,6 +95,12 @@
   - **인코더 시행착오 (놓치면 같은 함정 재방문)**: `h264_mediacodec`(hw) → return code 0 인데 빈 컨테이너 silent fail. `libx264`(sw H.264) → GPL 이라 'video' 변종 빌드에 미포함. `libkvazaar`(sw HEVC) → cleanup 단계 native crash (`pthread_mutex_destroy called on a destroyed mutex`). 최종 정착은 ffmpeg 내장 **`mpeg4` (MPEG-4 Part 2, LGPL)**. 자세한 경로는 [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) `_videoEncoder` 상단 주석 + 본 문서 "함정 — H.264/HEVC sw 인코더 다 막힘".
   - **보류 — 결과 카드**: 회의에서 보류된 "영상 끝 3초 결과 카드" 는 이번 구현에 미포함. 챌린지 확정 화면 자체가 분리될 가능성 때문에 후속 결정으로 미룸.
 
+- ✅ **카메라 녹화 시작 UX — preview freeze 제거 + transitional morph + 효과음** (2026-05-25). 안드로이드 실기기에서 녹화 시작 시 ① 프리뷰가 잠깐 정지하고 ② 어떤 시각/청각 시그널도 없어 "버튼이 안 먹힌 건가" 로 읽히던 문제 처리.
+  - **프리뷰 freeze 원인 제거**: 업스트림 `camera_android_camerax 0.7.2` 가 VideoCapture UseCase 를 `startVideoCapturing` 시점에 lazy bind 라 Camera2 capture session 이 재구성됨 → preview 일시 정지. [vendor fork](../tenk_app/vendor/camera_patched/camera_android_camerax/) 로 fork 떠서 `initializeCamera` 의 `bindToLifecycle` 에서 `imageAnalysis` 자리에 `videoCapture` 를 넣어 eager bind + `stopVideoRecording` 의 unbind 도 제거. `pubspec.yaml` `dependency_overrides` 로 주입. Tenk 는 image stream 을 안 쓰므로 ImageAnalysis 는 lazy 가 무해. CameraX UseCase 조합 표 기준 P+IC+VC 는 LIMITED 이상에서 지원 (4-way 는 LEVEL_3 한정이라 회피). 자세한 절차·재적용 가이드는 [../CLAUDE.md](../CLAUDE.md) "위치별 책임 — camera 패키지 fork 갱신" 행.
+  - **시작 transition 의 UX 원칙 — 단방향 모양 변화**: 대기 구간 애니메이션을 idle UI 와 recording UI 를 잇는 단방향 morph 로 통일. 안쪽 빨간 원(56px) → 둥근 사각형(28px) 3구간 piecewise (12% anticipation = scale 0.95, 73% main morph = easeInOutCubic 로 size·radius lerp, 15% snap = scale 1→1.15→1 sine bump). [_RecordButton._morphShape](../tenk_app/lib/presentation/amount/amount_camera_screen.dart). 라디오 링·preview 빨간 글로우·심박 펄스 시도했다가 제거 — 정지 효과로 읽혀 "지금 뭐가 일어나는지" 가 안 전달됐기 때문. 회귀 금지.
+  - **사운드 — `audioplayers` + 자체 합성 WAV**: `SystemSound.play(click)` 은 시스템 "터치음" 설정 켜진 경우만 동작 (대부분 꺼져 있음). `HapticFeedback` 은 진동만. 결국 `audioplayers ^6.1.0` 의존성 추가 + PowerShell 로 직접 합성한 종소리 chime ([assets/sounds/record_start.wav](../tenk_app/assets/sounds/record_start.wav), fundamental 1000Hz + 하모닉 1500/2200Hz + exponential decay + 도입 pitch chirp, 280ms ~12KB) 로 정착. **함정**: `PlayerMode.lowLatency` 는 `setSource` 미지원이라 사전 로드 패턴 (`setSource → seek+resume`) 안 됨 — 기본 MediaPlayer 모드 유지. 자세한 생성 스니펫 + 교체 방법은 [assets/sounds/README.md](../tenk_app/assets/sounds/README.md). 1차 1200Hz 순수 sine 은 "기계음 같다" 피드백 받아 chime 으로 교체했지만 여전히 합성음 인상 — handoff "남은 일" #1 으로 효과음 자체 교체 보류.
+  - **메모리 갱신**: [reference-camera-package-native-patch](.claude-memory) 메모리는 이전(Java listener wrap) 시도가 빠진 흔적만 있었어서 현재 활성 패치 (Dart eager bind) 기준으로 통째로 다시 씀.
+
 - ✅ **배지 획득 풀스크린 축하 모달 (Lottie)** (2026-05-25). 챌린지 응답의 신규 배지를 챌린지 상세 화면에서 감지해 풀스크린 모달로 축하. 듀오링고 스타일 — 배지 elasticOut 줌(0.2→1.0)·wobble 회전(±3.4°)·primary 색 글로우 + 중간 햅틱 1회 + Lottie 컨페티 overlay + "🎉 배지 획득!" + label. 탭으로 닫고 큐 다음 모달 자동 진입.
   - **Flutter 신규**: [badge_celebration_dialog.dart](../tenk_app/lib/presentation/challenge/widgets/badge_celebration_dialog.dart) — `showBadgeCelebrations(context, badges)` 큐 헬퍼 + `_BadgeCelebrationDialog` 위젯 (배지 여러 개 동시 획득 시 순차 표시. 모달 겹치면 dismiss 가 깨지고 시각적으로도 혼란스러워서). 의존성 +1 (`lottie: ^3.1.2`).
   - **diff 감지**: [ChallengeDetailScreen](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) 가 `_knownBadgeIds: Set<int>` (challengeBadgeId 기반) + `_baselineSet: bool` 보유. `reload()` 오버라이드로 super 완료 후 `_syncBadgesAndMaybeCelebrate()` 호출 — 첫 로드는 baseline 만 채우고, 이후엔 신규 배지만 acquiredDt 오름차순으로 큐 push. `_finalize` 의 `replaceData` 경로에서도 명시 호출 (mixin reload 우회 경로라 자동 hook 안 걸림).
@@ -131,9 +141,17 @@
 
 ## 남은 일 (우선순위 순)
 
-> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export + 배지 획득 축하 모달 은 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고.
+> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export + 배지 획득 축하 모달 + 카메라 녹화 시작 transitional morph 는 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고.
 
-### 1. 앱 UX 다듬기 (나머지)
+### 1. 녹화 시작 효과음 교체
+현재 [assets/sounds/record_start.wav](../tenk_app/assets/sounds/record_start.wav) 는 PowerShell 로 합성한 종소리 chime (fundamental 1000Hz + 하모닉 1500/2200Hz, exponential decay, 280ms). 1차 시도(순수 1200Hz sine) 보단 낫지만 여전히 "효과음 같다" 보다 "합성음 같다" 는 인상. 후보:
+- **royalty-free 효과음** — Pixabay Sounds / freesound.org / Zapsplat 에서 "camera shutter" / "record start" / "soft ding" 받아 같은 파일명으로 덮어쓰기. 라이선스 확인 필수 (CC0 권장). 파일은 WAV 또는 MP3, 짧을수록 (~150~250ms) 좋음 — `audioplayers` 양쪽 다 지원.
+- **합성 디자인 재설계** — 두 음 ascending (예: 800Hz → 1200Hz), 또는 swoosh (white noise + 빠른 low-pass sweep), 또는 더 짧은 percussive "tick + 잔향". 합성 스니펫은 [assets/sounds/README.md](../tenk_app/assets/sounds/README.md) 에 박혀 있어 파라미터만 바꿔 재생성 가능.
+- 결정 후 `flutter run` 으로 풀 재시작 필요 (hot reload 가 새 자산 안 읽음).
+
+진입 코드: [amount_camera_screen.dart](../tenk_app/lib/presentation/amount/amount_camera_screen.dart) `_playStartSound`. 자산만 교체하면 코드 변경 없음.
+
+### 2. 앱 UX 다듬기 (나머지)
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
 - **카메라 탭하여 초점(tap-to-focus)** — `camera` 패키지 `CameraController.setFocusPoint(Offset)` + `setExposurePoint`. 프리뷰 GestureDetector 로 좌표 변환 (`Offset(dx/width, dy/height)` 정규화). 시각 피드백(초점 사각형 0.5초)도 같이.
 - **하단 시스템 바(제스처 내비/3-버튼) 가림** — 안드로이드 일부 기기에서 화면 하단 버튼이 시스템 내비게이션 바에 가려져 누르기 힘듦. 후보: ① `SafeArea` 점검 + bottomPadding 강제, ② 주요 액션을 상단 또는 FAB 로 이동, ③ `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` + 수동 inset 처리. 영향 화면 전수 점검 필요 (카메라 화면, 기록/수정 화면 등).
@@ -141,13 +159,13 @@
 - **목록에 메모 노출** — 챌린지 상세의 amount 목록 (`_AmountTile`) 에서 memo 가 있을 때 미리보기(1~2줄 ellipsis) 또는 메모 아이콘 배지. 결정 필요: 본문 노출이 좋은지 아이콘만 노출이 좋은지 (긴 메모가 목록 높이를 흔들 수 있음).
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
 
-### 2. 페이지네이션 / 정렬
+### 3. 페이지네이션 / 정렬
 - `/api/challenges`, `/api/challenges/{id}/amounts`가 전체 목록 반환 중. `Pageable` 도입 시점 결정 (지금은 사용자당 챌린지 수가 적어 무방).
 
-### 3. Google / Naver 로그인 추가 (예정)
+### 4. Google / Naver 로그인 추가 (예정)
 - 동일 패턴: `GoogleTokenVerifier` / `NaverTokenVerifier` + `AuthService`에 분기 + `POST /api/auth/google/login` / `/naver/login`. **브라우저 redirect 흐름은 사용하지 않음** (모바일 SDK 전제).
 
-### 4. 운영 고려사항 (필요해지면)
+### 5. 운영 고려사항 (필요해지면)
 - **영상 저장소 S3/MinIO 이전** — `LocalFileStorage`를 인터페이스로 추출 후 구현체 분리.
 - **AT 강제 무효화(블랙리스트)** — 필요 시 Redis. 현재는 AT 만료 시간(1시간)에 의존.
 - **CI 도입** — 현재 통합 테스트가 로컬 `tenk` 스키마를 비우는 구조라 CI 에서 그대로 못 돈다. 도입 시 Testcontainers + 별도 `tenk_test` 스키마로 갈아탈 것.

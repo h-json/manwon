@@ -44,6 +44,18 @@ dependencies:
   share_plus: ^13.1.0
   ffmpeg_kit_flutter_new_video: ^2.0.0
   lottie: ^3.1.2
+  audioplayers: ^6.1.0
+
+dependency_overrides:
+  # tenk fork: VideoCapture UseCase 를 init 시점에 eager bind 하도록 패치.
+  # 업스트림은 startVideoRecording 시점에 lazy bind 라 Camera2 capture session 이
+  # 재구성되며 preview 가 잠깐 freeze 되는데, 2초 녹화 흐름엔 그 freeze 가 곧장
+  # "버튼이 안 먹힌 것" 으로 보임. 자세한 사유는
+  # vendor/camera_patched/camera_android_camerax/lib/src/android_camera_camerax.dart
+  # 의 [tenk fork patch] 주석 + docs/handoff.md 참고. 업스트림 버전을 올릴 때
+  # 같은 두 지점에 패치 재적용.
+  camera_android_camerax:
+    path: vendor/camera_patched/camera_android_camerax
 
 dev_dependencies:
   flutter_test:
@@ -71,6 +83,7 @@ flutter:
     - assets/badges/
     - assets/fonts/
     - assets/lottie/
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

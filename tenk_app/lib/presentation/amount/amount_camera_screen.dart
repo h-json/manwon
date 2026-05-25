@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../data/api/api_error.dart';
@@ -25,7 +27,8 @@ class AmountCameraScreen extends StatefulWidget {
 }
 
 class _AmountCameraScreenState extends State<AmountCameraScreen>
-    with SingleTickerProviderStateMixin {
+    // progress + pulse 두 AnimationController 를 같이 들고 있어 Single 불가.
+    with TickerProviderStateMixin {
   static const _recordDuration = Duration(seconds: 2);
 
   /// CameraX `startVideoRecording` 의 Future 가 실제 인코더 첫 프레임 쓰기 전에
@@ -50,6 +53,21 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
   VideoPlayerController? _player;
   Object? _playerError;
   late final AnimationController _progressController;
+  /// 사용자가 녹화 버튼을 탭한 순간(`_starting`)부터 실제 녹화가 시작되는 순간
+  /// (`_recording`) 사이를 잇는 단방향 morph driver. idle UI(큰 빨간 원) 가 recording
+  /// UI(작은 둥근 사각형) 로 자연스럽게 변형되며, 마지막 ~15% 구간은 살짝 scale up
+  /// 했다가 떨어지는 snap 으로 "시작 순간" 강조. duration 은 `_encoderStartLag` 보다
+  /// 살짝 짧게 잡아 실제 녹화 시작 직전에 morph 가 도착해 있도록.
+  late final AnimationController _startMorph;
+  /// 녹화 시작 효과음 (`assets/sounds/record_start.wav`) 전용 플레이어. 인스턴스를
+  /// 들고 있어 매 호출 시 native player 를 새로 만들지 않게 한다.
+  ///
+  /// **PlayerMode 주의**: `lowLatency` 모드는 `setSource` 를 지원하지 않아 사전
+  /// 로딩이 조용히 실패한다 (audioplayers 6.x 문서). 사전 로드 + `resume()` 패턴을
+  /// 쓰려면 기본 MediaPlayer 모드를 유지할 것. 짧은 효과음이라도 latency 는 ~50ms
+  /// 정도로 체감 안 됨.
+  final AudioPlayer _startSound = AudioPlayer()
+    ..setReleaseMode(ReleaseMode.stop);
 
   List<CameraDescription> _cameras = const [];
   int _cameraIndex = 0;
@@ -68,6 +86,15 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
       vsync: this,
       duration: _recordDuration,
     );
+    _startMorph = AnimationController(
+      vsync: this,
+      // _encoderStartLag(1000ms) 보다 살짝 짧게 — startVideoRecording resolve 시간
+      // 까지 합쳐도 실제 녹화 시작 시점엔 morph 가 완료돼 있도록.
+      duration: const Duration(milliseconds: 850),
+    );
+    // 자산을 미리 로드해 둬서 실제 녹화 시작 순간엔 지연 없이 재생. 실패는 조용히
+    // 무시 (사운드는 보조 시그널이고 햅틱 + 시각 효과로 충분).
+    unawaited(_startSound.setSource(AssetSource('sounds/record_start.wav')));
     _initCamera();
   }
 
@@ -76,6 +103,8 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
     _stopTimer?.cancel();
     _focusTimer?.cancel();
     _progressController.dispose();
+    _startMorph.dispose();
+    _startSound.dispose();
     _camera?.dispose();
     _disposePlayer();
     // "사용" 안 누른 채 종료된 임시 파일 정리. 호출자에게 넘긴 경우(_accepted)는 호출자 책임.
@@ -284,22 +313,31 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
       _starting = true;
       _recordedPath = null;
     });
+    // 탭 즉시 morph 시작 — idle 큰 원이 recording 작은 사각형으로 변형 시작.
+    _startMorph.forward(from: 0);
     try {
       await camera.startVideoRecording();
       // CameraX 의 future resolve 가 실제 인코더 첫 프레임보다 빠른 경우를 보정.
       // 자세한 사유는 _encoderStartLag 주석 참고.
       await Future.delayed(_encoderStartLag);
       if (!mounted) return;
+      // 녹화 시작 순간 시각/촉각/청각 트리플 시그널. 사운드는 audioplayers 가 처리,
+      // 햅틱은 시스템 진동 항상 동작. snap 은 morph 의 마지막 구간 (TweenSequence).
+      unawaited(_playStartSound());
+      unawaited(HapticFeedback.heavyImpact());
       setState(() {
         _starting = false;
         _recording = true;
       });
+      // morph 가 855ms 인데 wait 가 그보다 살짝 길어 거의 끝나 있을 것 — 안전하게 1로.
+      _startMorph.value = 1;
       _progressController.forward(from: 0);
       _stopTimer = Timer(_recordDuration, _stopRecording);
     } catch (e) {
       if (!mounted) return;
       _progressController.stop();
       _progressController.value = 0;
+      _startMorph.value = 0;
       setState(() {
         _starting = false;
         _recording = false;
@@ -317,6 +355,7 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
       final file = await camera.stopVideoRecording();
       if (!mounted) return;
       _progressController.value = 0;
+      _startMorph.value = 0;
       setState(() {
         _recording = false;
         _recordedPath = file.path;
@@ -325,6 +364,7 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
     } catch (e) {
       if (!mounted) return;
       _progressController.value = 0;
+      _startMorph.value = 0;
       setState(() => _recording = false);
       _showError('녹화 정지 실패: ${toApiException(e).message}');
     }
@@ -333,6 +373,7 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
   void _retake() {
     _disposePlayer();
     _deleteRecorded();
+    _startMorph.value = 0;
     setState(() {});
   }
 
@@ -345,6 +386,22 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// 녹화 시작 효과음 1회 재생. 사전 로딩된 source 를 처음으로 되감고 resume.
+  /// 사전 로드가 어떤 이유로 실패했다면 fallback 으로 그 자리에서 play 호출.
+  /// 둘 다 실패해도 정상 흐름엔 영향 없게 catch 후 무시 — 사운드는 햅틱·시각의 보조.
+  Future<void> _playStartSound() async {
+    try {
+      await _startSound.seek(Duration.zero);
+      await _startSound.resume();
+    } catch (_) {
+      try {
+        await _startSound.play(AssetSource('sounds/record_start.wav'));
+      } catch (_) {
+        // 자산 로드 실패 / 시스템 음소거 — 햅틱과 시각 효과로 보완됨.
+      }
+    }
   }
 
   @override
@@ -440,7 +497,9 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTapUp: _recording
+                // `_starting` 도 잠금: 녹화 직전 준비 구간엔 어떤 입력도 의미 없음
+                // (탭 초점/줌 변경이 곧 시작될 녹화에 노이즈만 됨).
+                onTapUp: (_recording || _starting)
                     ? null
                     : (details) {
                         final local = details.localPosition;
@@ -450,8 +509,9 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
                         );
                         _onTapFocus(normalized, local);
                       },
-                onScaleStart: _recording ? null : _onScaleStart,
-                onScaleUpdate: _recording ? null : _onScaleUpdate,
+                onScaleStart: (_recording || _starting) ? null : _onScaleStart,
+                onScaleUpdate:
+                    (_recording || _starting) ? null : _onScaleUpdate,
               ),
             ),
             if (_focusIndicator != null)
@@ -510,8 +570,8 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
     if (_cameras.isEmpty) return const SizedBox.shrink();
     final isBack =
         _cameras[_cameraIndex].lensDirection == CameraLensDirection.back;
-    final canSwitch = !_recording && _cameras.length >= 2;
-    final canFlash = !_recording && isBack && _camera != null;
+    final canSwitch = !_recording && !_starting && _cameras.length >= 2;
+    final canFlash = !_recording && !_starting && isBack && _camera != null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -666,38 +726,52 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
     return _RecordButton(
       enabled: canRecord,
       recording: _recording,
-      starting: _starting || _warmingUp,
+      // morph 는 진짜 _starting (사용자 탭 후 대기) 동안만. 백그라운드 _warmingUp
+      // 은 사용자 행동에 대한 응답이 아니므로 idle 그대로 (단지 disabled).
+      starting: _starting && !_recording,
       progress: _progressController,
+      startMorph: _startMorph,
       onTap: _startRecording,
     );
   }
 }
 
-/// 카메라 앱 스타일 원형 녹화 버튼.
+/// 카메라 앱 스타일 원형 녹화 버튼. 세 상태 + 한 transition:
 ///
-/// - 바깥: 회색 링 (border)
-/// - 안쪽: 빨간 원 (녹화 중엔 둥근 사각형으로 morph)
-/// - 녹화 중엔 링을 따라 primary 색 호(arc)가 2초간 채워짐
-/// - starting (워밍업 or startVideoRecording resolve 대기) 중엔 안쪽에 spinner
+/// - **idle**: 회색 링 + 안쪽 큰 빨간 원 (size [_innerIdle])
+/// - **starting (transition)**: 안쪽이 큰 원 → 작은 둥근 사각형으로 단방향 morph.
+///   `startMorph` 0→1 동안 size 와 corner radius 가 부드럽게 변하고, 마지막 15%
+///   구간엔 약한 anticipation+snap (scale 0.95 → 1.15 → 1.0) 으로 "지금 시작!" 강조.
+/// - **recording**: 회색 링 + 작은 빨간 사각형 + primary 색 progress arc 가 2초간 채워짐.
+///
+/// idle 과 recording 의 시각 차이가 그대로 transition 의 시작/끝 상태가 되도록 설계 —
+/// 대기 구간에 별도 효과음 같은 정지 애니메이션이 아니라 진짜 모양 변화로 잇는다.
 class _RecordButton extends StatelessWidget {
   const _RecordButton({
     required this.enabled,
     required this.recording,
     required this.starting,
     required this.progress,
+    required this.startMorph,
     required this.onTap,
   });
 
   final bool enabled;
   final bool recording;
+  /// "사용자가 탭해서 morph 가 진행 중" 인 경우. `_warmingUp` 은 포함 X — warmup
+  /// 동안엔 그냥 disabled idle 로 보임.
   final bool starting;
   final Animation<double> progress;
+  /// 0→1. starting=true 직후 forward, recording 으로 바뀌면 1 로 snap.
+  final Animation<double> startMorph;
   final VoidCallback onTap;
 
   static const double _outer = 84;
   static const double _ring = 72;
   static const double _innerIdle = 56;
   static const double _innerRecording = 28;
+  static const double _innerIdleRadius = _innerIdle / 2; // 완전 원
+  static const double _innerRecordingRadius = 6; // 둥근 사각형
 
   @override
   Widget build(BuildContext context) {
@@ -705,7 +779,6 @@ class _RecordButton extends StatelessWidget {
     final ringColor = enabled || recording || starting
         ? theme.colorScheme.onSurface
         : theme.disabledColor;
-    final innerColor = enabled || recording ? Colors.red : theme.disabledColor;
     return Semantics(
       button: true,
       enabled: enabled,
@@ -741,34 +814,83 @@ class _RecordButton extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: ringColor, width: 3),
                 ),
-                child: Center(
-                  child: starting
-                      ? SizedBox(
-                          width: _innerIdle * 0.6,
-                          height: _innerIdle * 0.6,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: theme.colorScheme.primary,
-                          ),
-                        )
-                      : AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          width: recording ? _innerRecording : _innerIdle,
-                          height: recording ? _innerRecording : _innerIdle,
-                          decoration: BoxDecoration(
-                            color: innerColor,
-                            borderRadius: BorderRadius.circular(
-                              recording ? 6 : _innerIdle / 2,
-                            ),
-                          ),
-                        ),
-                ),
+                child: Center(child: _buildInner(context)),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildInner(BuildContext context) {
+    final theme = Theme.of(context);
+    // morph 중이면 controller 로 그리고, 그 외엔 단순 AnimatedContainer 로 idle↔recording.
+    if (starting) {
+      return AnimatedBuilder(
+        animation: startMorph,
+        builder: (context, _) {
+          final shape = _morphShape(startMorph.value);
+          return Transform.scale(
+            scale: shape.scale,
+            child: Container(
+              width: shape.size,
+              height: shape.size,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(shape.radius),
+              ),
+            ),
+          );
+        },
+      );
+    }
+    final innerColor = enabled || recording ? Colors.red : theme.disabledColor;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      width: recording ? _innerRecording : _innerIdle,
+      height: recording ? _innerRecording : _innerIdle,
+      decoration: BoxDecoration(
+        color: innerColor,
+        borderRadius: BorderRadius.circular(
+          recording ? _innerRecordingRadius : _innerIdleRadius,
+        ),
+      ),
+    );
+  }
+
+  /// startMorph 0..1 을 받아 그 시점의 (size, radius, scale) 을 반환. 세 구간:
+  /// - 0..0.12: 살짝 작아짐 (scale 1.0 → 0.95) — anticipation. 모양은 큰 원 유지.
+  /// - 0.12..0.85: 본 morph. size·radius 둘 다 easeInOut 으로 idle → recording.
+  /// - 0.85..1.0: snap (scale 1.0 → 1.15 → 1.0 sine bump) — "지금 시작!" 순간 강조.
+  ///   모양은 작은 둥근 사각형 정착 상태.
+  static ({double size, double radius, double scale}) _morphShape(double t) {
+    if (t < 0.12) {
+      final local = t / 0.12;
+      return (
+        size: _innerIdle,
+        radius: _innerIdleRadius,
+        scale: 1.0 - local * 0.05,
+      );
+    }
+    if (t < 0.85) {
+      final local = (t - 0.12) / 0.73;
+      final eased = Curves.easeInOutCubic.transform(local);
+      return (
+        size: _innerIdle + (_innerRecording - _innerIdle) * eased,
+        radius: _innerIdleRadius +
+            (_innerRecordingRadius - _innerIdleRadius) * eased,
+        scale: 0.95 + 0.05 * eased,
+      );
+    }
+    final local = (t - 0.85) / 0.15;
+    // sin(pi * local) 은 0 → 1 → 0 호 — bump 모양.
+    final bump = math.sin(local * math.pi) * 0.15;
+    return (
+      size: _innerRecording,
+      radius: _innerRecordingRadius,
+      scale: 1.0 + bump,
     );
   }
 }
@@ -893,3 +1015,4 @@ class _ZoomValueChip extends StatelessWidget {
     );
   }
 }
+
