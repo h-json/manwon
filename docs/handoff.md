@@ -3,7 +3,7 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-24 (**촬영 영상 미리보기 + 수정 화면 영상 미리보기 화면 도입**. 카메라 화면은 녹화 직후 `video_player` 로 자동 loop 재생 (체크 아이콘 폐기). 수정 화면의 영상 섹션은 collapsed-by-default — "영상 보기" 탭 시 신규 [AmountVideoPreviewScreen](../tenk_app/lib/presentation/amount/amount_video_preview_screen.dart) 으로 영상 + 다시 촬영/삭제 노출. 서버 영상은 lazy 다운로드 + tmp 캐시 + dispose 정리, 다운로드 전 잔재 선삭제 + 사이즈 검증으로 깨진 캐시 차단. 직전 커밋에서 AmountService.update 단위 테스트 5개 보강해 백엔드 총 84개 그린. 다음 우선순위: 결과 카드 회의 → 배지 획득 애니메이션)
+마지막 갱신: 2026-05-25 (**배지 획득 풀스크린 축하 모달 도입 (Lottie)**. 챌린지 응답의 신규 배지를 챌린지 상세 화면에서 감지 → 풀스크린 모달로 배지 elasticOut 줌·wobble·글로우 + 햅틱 + Lottie 컨페티 overlay + "🎉 배지 획득!" + label. diff 는 `_knownBadgeIds` (challengeBadgeId 기반) + `_baselineSet` 으로 첫 로드는 baseline 만 채우고 과거 배지는 다시 축하하지 않음. 트리거 지점은 ChallengeDetailScreen 만 — 메인/홈 등 다른 진입점은 추후 BadgeNotifier 로 승격할 때 같이. `confetti.json` 자산은 사용자가 LottieFiles 무료 에셋 받아 넣는 구조, 없으면 컨페티만 조용히 생략. 다음 우선순위: 결과 카드 회의)
 
 ---
 
@@ -91,6 +91,13 @@
   - **인코더 시행착오 (놓치면 같은 함정 재방문)**: `h264_mediacodec`(hw) → return code 0 인데 빈 컨테이너 silent fail. `libx264`(sw H.264) → GPL 이라 'video' 변종 빌드에 미포함. `libkvazaar`(sw HEVC) → cleanup 단계 native crash (`pthread_mutex_destroy called on a destroyed mutex`). 최종 정착은 ffmpeg 내장 **`mpeg4` (MPEG-4 Part 2, LGPL)**. 자세한 경로는 [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) `_videoEncoder` 상단 주석 + 본 문서 "함정 — H.264/HEVC sw 인코더 다 막힘".
   - **보류 — 결과 카드**: 회의에서 보류된 "영상 끝 3초 결과 카드" 는 이번 구현에 미포함. 챌린지 확정 화면 자체가 분리될 가능성 때문에 후속 결정으로 미룸.
 
+- ✅ **배지 획득 풀스크린 축하 모달 (Lottie)** (2026-05-25). 챌린지 응답의 신규 배지를 챌린지 상세 화면에서 감지해 풀스크린 모달로 축하. 듀오링고 스타일 — 배지 elasticOut 줌(0.2→1.0)·wobble 회전(±3.4°)·primary 색 글로우 + 중간 햅틱 1회 + Lottie 컨페티 overlay + "🎉 배지 획득!" + label. 탭으로 닫고 큐 다음 모달 자동 진입.
+  - **Flutter 신규**: [badge_celebration_dialog.dart](../tenk_app/lib/presentation/challenge/widgets/badge_celebration_dialog.dart) — `showBadgeCelebrations(context, badges)` 큐 헬퍼 + `_BadgeCelebrationDialog` 위젯 (배지 여러 개 동시 획득 시 순차 표시. 모달 겹치면 dismiss 가 깨지고 시각적으로도 혼란스러워서). 의존성 +1 (`lottie: ^3.1.2`).
+  - **diff 감지**: [ChallengeDetailScreen](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) 가 `_knownBadgeIds: Set<int>` (challengeBadgeId 기반) + `_baselineSet: bool` 보유. `reload()` 오버라이드로 super 완료 후 `_syncBadgesAndMaybeCelebrate()` 호출 — 첫 로드는 baseline 만 채우고, 이후엔 신규 배지만 acquiredDt 오름차순으로 큐 push. `_finalize` 의 `replaceData` 경로에서도 명시 호출 (mixin reload 우회 경로라 자동 hook 안 걸림).
+  - **자산**: [assets/lottie/](../tenk_app/assets/lottie/) 디렉토리 신설 + pubspec `flutter.assets` 등록. `confetti.json` 은 사용자가 [LottieFiles](https://lottiefiles.com/) 무료 에셋 받아 넣는 구조 (라이선스 결정 회피). 없으면 컨페티만 조용히 생략 — `Lottie.asset(errorBuilder:)` 폴백, 배지 줌·바운스는 그대로. 사용 가이드는 [assets/lottie/README.md](../tenk_app/assets/lottie/README.md).
+  - **트리거 지점은 ChallengeDetailScreen 만** — 메인/홈 등 다른 진입점은 현재 범위 밖. 알리고 싶으면 global `BadgeNotifier` 로 승격 (Scope 에 추가, AmountApi/ChallengeApi 응답 시 알림). 자세한 정책은 [../CLAUDE.md](../CLAUDE.md) "배지 UI 원칙" 참고.
+  - **검증**: 디버그 IconButton 으로 가짜 배지 3개(STREAK 3 / NO_SPEND 7 / CHALLENGE_SUCCESS) 큐 동작 + 애니메이션 확인 후 제거. 실제 diff 경로(NO_SPEND/CHALLENGE_SUCCESS 백엔드 → reload → 모달) E2E 는 SQL 백데이트 필요해서 미수행 — 다음 머신에서 확인해도 됨. CHALLENGE_SUCCESS 가 제일 가벼움: 챌린지 생성 → SQL `UPDATE challenge SET start_date = CURDATE() - INTERVAL 1 DAY, end_date = CURDATE() - INTERVAL 1 DAY WHERE id = ?` → 앱에서 "결과 확정하기" 탭.
+
 - ✅ **촬영 영상 미리보기 + 수정 화면 영상 미리보기 화면** (2026-05-24). "녹화 영상 미리보기" + "촬영 직후 바로 재생" 두 항목 같이 처리. 실기기에서 retake/delete 흐름까지 골든 패스 검증 통과.
   - **카메라 화면 ([AmountCameraScreen](../tenk_app/lib/presentation/amount/amount_camera_screen.dart))**: 녹화 정지 직후 `video_player` 로 영상을 자동 loop 재생. 탭으로 일시정지/재생. 기존 체크 아이콘 + "2초 영상 녹화 완료" 텍스트는 player 초기화 실패 시 폴백으로만 남김 (저장은 가능). dispose 시 player + 임시 파일 모두 정리.
   - **수정 화면 영상 미리보기 화면 신설 ([AmountVideoPreviewScreen](../tenk_app/lib/presentation/amount/amount_video_preview_screen.dart))**: 영상 + "다시 촬영" / "삭제" 두 버튼. `VideoPreviewAction` enum 으로 부모(edit 화면) 에 액션 반환. 실제 카메라 호출·REMOVE 마킹은 부모 책임. UI 는 카메라 화면의 녹화 후 미리보기와 동일한 레이아웃.
@@ -124,18 +131,9 @@
 
 ## 남은 일 (우선순위 순)
 
-> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export 는 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고.
+> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export + 배지 획득 축하 모달 은 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고.
 
-### 1. 배지 획득 애니메이션
-
-> 사용자 성취감/재미를 위해. 도메인 변경 없는 순수 클라이언트 UX.
-
-- 트리거: 챌린지 응답의 `badges`가 직전 조회 대비 늘어난 시점 감지. `AsyncStateMixin.replaceData` 호출 전후 비교 또는 별도 캐시.
-- 표현: Lottie 애니메이션 + confetti + 햅틱 1회. 패키지 `lottie`, `confetti`, `flutter/services`.
-- MVP: 새 배지 발견 시 dialog로 1.5초 lottie 재생. 챌린지 상세에서만 트리거 (목록 화면은 시끄러워짐).
-- 애셋: Lottie JSON 1~2개 정도. `assets/animations/badge_acquired.json` 같은 위치.
-
-### 2. 앱 UX 다듬기 (나머지)
+### 1. 앱 UX 다듬기 (나머지)
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
 - **카메라 탭하여 초점(tap-to-focus)** — `camera` 패키지 `CameraController.setFocusPoint(Offset)` + `setExposurePoint`. 프리뷰 GestureDetector 로 좌표 변환 (`Offset(dx/width, dy/height)` 정규화). 시각 피드백(초점 사각형 0.5초)도 같이.
 - **하단 시스템 바(제스처 내비/3-버튼) 가림** — 안드로이드 일부 기기에서 화면 하단 버튼이 시스템 내비게이션 바에 가려져 누르기 힘듦. 후보: ① `SafeArea` 점검 + bottomPadding 강제, ② 주요 액션을 상단 또는 FAB 로 이동, ③ `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` + 수동 inset 처리. 영향 화면 전수 점검 필요 (카메라 화면, 기록/수정 화면 등).
@@ -143,13 +141,13 @@
 - **목록에 메모 노출** — 챌린지 상세의 amount 목록 (`_AmountTile`) 에서 memo 가 있을 때 미리보기(1~2줄 ellipsis) 또는 메모 아이콘 배지. 결정 필요: 본문 노출이 좋은지 아이콘만 노출이 좋은지 (긴 메모가 목록 높이를 흔들 수 있음).
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
 
-### 3. 페이지네이션 / 정렬
+### 2. 페이지네이션 / 정렬
 - `/api/challenges`, `/api/challenges/{id}/amounts`가 전체 목록 반환 중. `Pageable` 도입 시점 결정 (지금은 사용자당 챌린지 수가 적어 무방).
 
-### 4. Google / Naver 로그인 추가 (예정)
+### 3. Google / Naver 로그인 추가 (예정)
 - 동일 패턴: `GoogleTokenVerifier` / `NaverTokenVerifier` + `AuthService`에 분기 + `POST /api/auth/google/login` / `/naver/login`. **브라우저 redirect 흐름은 사용하지 않음** (모바일 SDK 전제).
 
-### 5. 운영 고려사항 (필요해지면)
+### 4. 운영 고려사항 (필요해지면)
 - **영상 저장소 S3/MinIO 이전** — `LocalFileStorage`를 인터페이스로 추출 후 구현체 분리.
 - **AT 강제 무효화(블랙리스트)** — 필요 시 Redis. 현재는 AT 만료 시간(1시간)에 의존.
 - **CI 도입** — 현재 통합 테스트가 로컬 `tenk` 스키마를 비우는 구조라 CI 에서 그대로 못 돈다. 도입 시 Testcontainers + 별도 `tenk_test` 스키마로 갈아탈 것.

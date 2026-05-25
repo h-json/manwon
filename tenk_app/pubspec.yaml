@@ -43,6 +43,7 @@ dependencies:
   gal: ^2.3.2
   share_plus: ^13.1.0
   ffmpeg_kit_flutter_new_video: ^2.0.0
+  lottie: ^3.1.2
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +70,7 @@ flutter:
   assets:
     - assets/badges/
     - assets/fonts/
+    - assets/lottie/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

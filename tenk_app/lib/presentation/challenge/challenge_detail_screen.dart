@@ -9,6 +9,7 @@ import '../amount/amount_record_screen.dart';
 import '../common/async_state.dart';
 import '_formatters.dart';
 import 'export/export_screen.dart';
+import 'widgets/badge_celebration_dialog.dart';
 import 'widgets/challenge_badges.dart';
 import 'widgets/challenge_status.dart';
 
@@ -30,6 +31,12 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
   bool _changed = false;
   bool _busy = false;
 
+  /// 이미 한 번 본 챌린지-배지의 식별자. 새 응답에서 여기 없는 것만 축하 모달로 띄운다.
+  /// 첫 로드는 [_baselineSet] 으로 막아 baseline 만 채우고 모달은 띄우지 않는다 —
+  /// 화면에 처음 들어왔을 때 과거에 받은 배지를 다시 축하하면 안 됨.
+  final Set<int> _knownBadgeIds = <int>{};
+  bool _baselineSet = false;
+
   @override
   Future<_Detail> fetch() async {
     final challengeApi = ChallengeScope.of(context);
@@ -50,6 +57,44 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
     ensureLoaded();
   }
 
+  /// `reload` 가 끝난 뒤 한 번씩 호출 — baseline 외엔 신규 배지만 골라 축하 모달을 띄운다.
+  /// `replaceData` 처럼 mixin 의 reload 를 우회하는 경로에서도 직접 호출할 것.
+  Future<void> _syncBadgesAndMaybeCelebrate() async {
+    final current = data;
+    if (current == null) return;
+    final incoming = current.challenge.badges;
+    final incomingIds = incoming.map((b) => b.challengeBadgeId).toSet();
+
+    if (!_baselineSet) {
+      _knownBadgeIds
+        ..clear()
+        ..addAll(incomingIds);
+      _baselineSet = true;
+      return;
+    }
+
+    final newBadges = incoming
+        .where((b) => !_knownBadgeIds.contains(b.challengeBadgeId))
+        .toList()
+      ..sort((a, b) => a.acquiredDt.compareTo(b.acquiredDt));
+
+    // 알려진 집합은 모달 띄우기 전에 먼저 갱신해 둔다 —
+    // 모달 중 reload 가 또 돌아도 같은 배지를 다시 큐에 넣지 않도록.
+    _knownBadgeIds
+      ..clear()
+      ..addAll(incomingIds);
+
+    if (newBadges.isEmpty || !mounted) return;
+    await showBadgeCelebrations(context, newBadges);
+  }
+
+  @override
+  Future<void> reload() async {
+    await super.reload();
+    if (!mounted) return;
+    await _syncBadgesAndMaybeCelebrate();
+  }
+
   Future<void> _finalize() async {
     setState(() => _busy = true);
     try {
@@ -62,6 +107,7 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
       final current = data;
       if (current != null) {
         replaceData((challenge: next, amounts: current.amounts));
+        await _syncBadgesAndMaybeCelebrate();
       } else {
         await reload();
       }

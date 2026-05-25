@@ -206,7 +206,8 @@ lib/
     │   ├── _formatters.dart        # 도메인 내부 공유 (외부 노출 X — 언더스코어 prefix)
     │   ├── widgets/                # 도메인 전용 공용 위젯
     │   │   ├── challenge_status.dart
-    │   │   └── challenge_badges.dart  # 챌린지에 귀속된 배지 아이콘만 작게 (잠금 노출 X)
+    │   │   ├── challenge_badges.dart  # 챌린지에 귀속된 배지 아이콘만 작게 (잠금 노출 X)
+    │   │   └── badge_celebration_dialog.dart  # 신규 배지 획득 시 풀스크린 축하 모달 + 큐 헬퍼
     │   ├── export/                 # 영상 합본 export 흐름 (확정 후에만 진입)
     │   │   ├── export_plan.dart      # 세션 한정 모델 (선택 + 자막 오버라이드)
     │   │   ├── export_screen.dart    # 클립 선택 + 자막 편집
@@ -227,9 +228,12 @@ lib/
 
 배지 자산: `tenk_app/assets/badges/` (pubspec.yaml `flutter.assets`에 등록). 파일명은 서버 `badge.icon_path`와 1:1 매칭 (`streak_3.png` 등 9개). 새 배지 추가 시 schema.sql · 자산 디렉토리 동시 갱신.
 
+Lottie 자산: `tenk_app/assets/lottie/` — 현재 `confetti.json` (배지 축하 모달 컨페티) 1개. 파일이 없으면 컨페티만 조용히 생략되고 배지 줌·바운스는 그대로. 추가/교체 시 라이선스 확인 ([assets/lottie/README.md](tenk_app/assets/lottie/README.md)).
+
 배지 UI 원칙:
 - **챌린지에 귀속된 획득 배지만 노출** — 잠금 상태/미획득은 챌린지 단위 모델에서 의미 없으므로 보이지 않는다. 전용 "배지 화면"이나 진입점도 없다.
 - 챌린지 응답(`Challenge.badges`)을 카드·상세에서 그대로 [ChallengeBadgesRow](tenk_app/lib/presentation/challenge/widgets/challenge_badges.dart) 로 렌더.
+- **신규 배지 획득 알림은 [ChallengeDetailScreen](tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) 의 reload diff 로만**. `_knownBadgeIds` (challengeBadgeId 기반) 와 새 응답을 비교해 신규 항목만 [showBadgeCelebrations](tenk_app/lib/presentation/challenge/widgets/badge_celebration_dialog.dart) 로 큐잉. 첫 로드는 `_baselineSet` 으로 막아 baseline 만 채움 — 과거 배지를 다시 축하하지 않는다. 메인/홈 등 다른 진입점에서도 알리고 싶으면 global `BadgeNotifier` 로 승격 (현재 범위 밖).
 - 유저 단위 누적(=업적) 화면은 추후 추가 예정 — 그때 별도 `presentation/achievement/` + 별도 Scope/API 신설.
 
 ### 레이어 규칙 (반드시 지킬 것)
