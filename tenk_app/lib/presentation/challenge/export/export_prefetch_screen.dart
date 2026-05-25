@@ -13,7 +13,7 @@ import 'export_plan.dart';
 /// 영상 합본 export 의 2단계 — 선택된 영상들을 디바이스 임시 디렉토리에 다운로드.
 ///
 /// 회의 결정 #12: **1개라도 실패하면 전체 중단 + 재시도 버튼**. 부분 합본을 만들지 않는다.
-/// 클립 단위 sequential 다운로드 — 원본이 ResolutionPreset.low 2초라 파일이 매우 작아 (~수십 KB)
+/// 클립 단위 sequential 다운로드 — 원본이 ResolutionPreset.medium 2초라 파일이 작아
 /// 병렬화 이득이 작고, 진행률 표시가 단순해짐.
 ///
 /// 다운로드된 파일들은 `{tmp}/tenk_export/{challengeId}/{fileId}.mp4` 에 저장 — 같은 챌린지 재진입 시
