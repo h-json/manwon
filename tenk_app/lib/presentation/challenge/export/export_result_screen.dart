@@ -145,6 +145,7 @@ class _ExportResultScreenState extends State<ExportResultScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('완성된 영상')),
       body: SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

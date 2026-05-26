@@ -289,11 +289,13 @@ class _AmountEditScreenState extends State<AmountEditScreen> {
     final title = noSpend ? '무지출 기록 수정' : '지출 기록 수정';
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: AbsorbPointer(
-        absorbing: _busy,
-        child: Form(
-          key: _formKey,
-          child: ListView(
+      body: SafeArea(
+        top: false,
+        child: AbsorbPointer(
+          absorbing: _busy,
+          child: Form(
+            key: _formKey,
+            child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
               if (!noSpend) ..._buildDateTimeSection(theme),
@@ -351,6 +353,7 @@ class _AmountEditScreenState extends State<AmountEditScreen> {
                 label: const Text('삭제'),
               ),
             ],
+          ),
           ),
         ),
       ),

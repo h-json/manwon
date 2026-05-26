@@ -156,9 +156,11 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
     final title = widget.noSpend ? '무지출 기록' : '지출 기록';
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: AbsorbPointer(
-        absorbing: _submitting,
-        child: Form(
+      body: SafeArea(
+        top: false,
+        child: AbsorbPointer(
+          absorbing: _submitting,
+          child: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.all(24),
@@ -226,6 +228,7 @@ class _AmountRecordScreenState extends State<AmountRecordScreen> {
                     : const Text('저장'),
               ),
             ],
+          ),
           ),
         ),
       ),

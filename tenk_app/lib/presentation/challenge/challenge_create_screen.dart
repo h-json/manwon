@@ -103,11 +103,13 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('새 챌린지')),
-      body: AbsorbPointer(
-        absorbing: _submitting,
-        child: Form(
-          key: _formKey,
-          child: ListView(
+      body: SafeArea(
+        top: false,
+        child: AbsorbPointer(
+          absorbing: _submitting,
+          child: Form(
+            key: _formKey,
+            child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
               Text('기간', style: theme.textTheme.titleMedium),
@@ -179,6 +181,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
                     : const Text('챌린지 시작'),
               ),
             ],
+          ),
           ),
         ),
       ),

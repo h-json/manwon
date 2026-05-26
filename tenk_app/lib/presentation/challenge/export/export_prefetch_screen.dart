@@ -153,25 +153,28 @@ class _ExportPrefetchScreenState extends State<ExportPrefetchScreen> {
           title: const Text('영상 준비 중'),
           automaticallyImplyLeading: false,
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: switch (_phase) {
-              _Phase.downloading => _DownloadingView(
-                  doneCount: _doneCount,
-                  totalCount: total,
-                  progress: progress,
-                  onCancel: _cancel,
-                  theme: theme,
-                ),
-              _Phase.error => _ErrorView(
-                  message: _errorMessage ?? '알 수 없는 오류',
-                  onRetry: _retry,
-                  onCancel: _cancel,
-                  theme: theme,
-                ),
-              _Phase.cancelled => _CancelledView(onClose: _cancel),
-            },
+        body: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: switch (_phase) {
+                _Phase.downloading => _DownloadingView(
+                    doneCount: _doneCount,
+                    totalCount: total,
+                    progress: progress,
+                    onCancel: _cancel,
+                    theme: theme,
+                  ),
+                _Phase.error => _ErrorView(
+                    message: _errorMessage ?? '알 수 없는 오류',
+                    onRetry: _retry,
+                    onCancel: _cancel,
+                    theme: theme,
+                  ),
+                _Phase.cancelled => _CancelledView(onClose: _cancel),
+              },
+            ),
           ),
         ),
       ),

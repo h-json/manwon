@@ -412,6 +412,7 @@ class _AmountCameraScreenState extends State<AmountCameraScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('영상 촬영')),
       body: SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(

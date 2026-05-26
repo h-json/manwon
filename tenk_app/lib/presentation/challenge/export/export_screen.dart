@@ -133,38 +133,41 @@ class _ExportScreenState extends State<ExportScreen> {
           ),
         ],
       ),
-      body: _clips.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  '합칠 기록이 없어요.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-            )
-          : Column(
-              children: [
-                _HeaderBanner(
-                  challenge: widget.challenge,
-                  selectedCount: selectedCount,
-                  totalCount: _clips.length,
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    itemCount: _clips.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 4),
-                    itemBuilder: (_, i) => _ClipTile(
-                      order: i + 1,
-                      clip: _clips[i],
-                      onToggle: (v) => _toggle(i, v),
-                      onEditComment: () => _editComment(i),
-                    ),
+      body: SafeArea(
+        top: false,
+        child: _clips.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    '합칠 기록이 없어요.',
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ),
-              ],
-            ),
+              )
+            : Column(
+                children: [
+                  _HeaderBanner(
+                    challenge: widget.challenge,
+                    selectedCount: selectedCount,
+                    totalCount: _clips.length,
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      itemCount: _clips.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 4),
+                      itemBuilder: (_, i) => _ClipTile(
+                        order: i + 1,
+                        clip: _clips[i],
+                        onToggle: (v) => _toggle(i, v),
+                        onEditComment: () => _editComment(i),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),

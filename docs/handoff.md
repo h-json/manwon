@@ -3,7 +3,9 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-26 (**카메라 녹화 시작 효과음 — royalty-free MP3 + 탭 즉시 트리거 분리**. ① 합성음 한계: 1차 1200Hz sine → 2차 종소리 chime → 3차 두 음 ascending ding 까지 시도했지만 셋 다 "합성음 같다" 인상 못 벗음. 결국 royalty-free MP3 다운로드로 갈아탐 ([assets/sounds/record_start.mp3](../tenk_app/assets/sounds/record_start.mp3)). README 의 PowerShell 합성 스니펫은 제거하고 사이트 후보 (freesound/pixabay/mixkit/zapsplat/soundbible) 만 남김. ② 트리거 위치 분리: 기존엔 효과음+햅틱+morph snap 셋 다 `_recording=true` 전환 시점 (= `startVideoRecording` resolve + `_encoderStartLag` 1초 뒤) 이었는데, 사용자 인지 모델로는 "녹화 중에 소리가 났다" 로 어색하게 잡힘 (영상엔 enableAudio:false 라 안 들어가도). 효과음만 탭 즉시로 옮겨 "버튼 인식" 신호로 분리, 햅틱+snap 은 녹화 시작 시점 유지해 "지금부터 녹화" 신호로 역할 분리. 카메라 화면 작업은 여기서 일단락 — 다음 우선순위는 "남은 일 #1 앱 UX 다듬기 백로그")
+마지막 갱신: 2026-05-26 (**하단 시스템 바 가림 픽스 — body SafeArea(top:false) 전 화면 일관 적용**. 안드로이드 일부 기기의 제스처 내비/3-버튼 바가 본문 하단을 깔아뭉개던 백로그 항목 처리. 처음엔 사용자가 핀포인트로 짚어준 4 화면만 손댔다가 "전체 일관성이 깨진다" 는 지적으로 전수 통일로 전환. **규칙**: AppBar 가 있는 모든 화면(현재 10 개)의 Scaffold body 를 `SafeArea(top: false, child: ...)` 로 감싸 bottom·side inset 만 처리 — top 은 AppBar 가 알아서. AppBar 없는 화면(login)은 `SafeArea(...)` 전체 방향. 화면별로 SafeArea 가 있는 곳·없는 곳이 섞여 있으면 디바이스 따라 가림이 들쭉날쭉해지므로 패턴을 화면 추가 시점에 동일하게 가져갈 것. **적용 화면**: amount_record / amount_edit / amount_camera / amount_video_preview / challenge_list / challenge_detail / challenge_create / export_screen / export_prefetch / export_compose / export_result. edge-to-edge 전환은 보류 — 작업량 크고 디자인 자유도가 당장 필요하지 않음. **⚠️ 실기기 미검증** — 작업 시점에 실기기 테스트 환경이 없어 빌드·런 확인을 못 했다. 다음 머신/세션에서 11 화면 전수로 안드로이드 실기기(특히 제스처 내비 ON 인 기기 + 3-버튼 내비 기기) 에서 하단 액션 버튼이 시스템 바 위로 노출되는지 확인해야 한다. 자세한 체크리스트는 아래 "남은 일 §1 실기기 테스트" 참고. 다음 우선순위는 백로그 다음 항목 (업적 시스템 / 영상 export 결과 카드 / 메모 노출).)
+
+이전 갱신: 2026-05-26 (**카메라 녹화 시작 효과음 — royalty-free MP3 + 탭 즉시 트리거 분리**. ① 합성음 한계: 1차 1200Hz sine → 2차 종소리 chime → 3차 두 음 ascending ding 까지 시도했지만 셋 다 "합성음 같다" 인상 못 벗음. 결국 royalty-free MP3 다운로드로 갈아탐 ([assets/sounds/record_start.mp3](../tenk_app/assets/sounds/record_start.mp3)). README 의 PowerShell 합성 스니펫은 제거하고 사이트 후보 (freesound/pixabay/mixkit/zapsplat/soundbible) 만 남김. ② 트리거 위치 분리: 기존엔 효과음+햅틱+morph snap 셋 다 `_recording=true` 전환 시점 (= `startVideoRecording` resolve + `_encoderStartLag` 1초 뒤) 이었는데, 사용자 인지 모델로는 "녹화 중에 소리가 났다" 로 어색하게 잡힘 (영상엔 enableAudio:false 라 안 들어가도). 효과음만 탭 즉시로 옮겨 "버튼 인식" 신호로 분리, 햅틱+snap 은 녹화 시작 시점 유지해 "지금부터 녹화" 신호로 역할 분리. 카메라 화면 작업은 여기서 일단락 — 다음 우선순위는 "남은 일 #1 앱 UX 다듬기 백로그")
 
 이전 갱신: 2026-05-25 (**카메라 녹화 시작 UX — transitional morph + audioplayers chime**. ① 애니메이션: 대기 구간을 idle UI 와 recording UI 를 잇는 단방향 morph 로 통일 — 안쪽 빨간 원(56px) → 둥근 사각형(28px) 3구간 piecewise (12% anticipation, 73% main morph, 15% snap = scale 1→1.15→1). 라디오 링·preview 글로우·심박 펄스 시도했다가 제거 (정지 효과로 읽혀 의도 전달 X). ② 사운드: `SystemSound`/`HapticFeedback` 으론 안 들려서 `audioplayers ^6.1.0` + 자체 PowerShell 합성 WAV 로 정착. 함정: `PlayerMode.lowLatency` 는 `setSource` 미지원이라 사전 로드 패턴 쓰려면 기본 MediaPlayer 모드 유지할 것. 1차 1200Hz 순수 sine 은 "기계음" 피드백 받아 종소리 chime (fundamental + 1500/2200Hz 하모닉 + exponential decay + 도입 pitch chirp, 280ms, ~12KB) 으로 교체.)
 
@@ -148,11 +150,16 @@
 
 ### 1. 앱 UX 다듬기 (백로그)
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
-- **카메라 탭하여 초점(tap-to-focus)** — `camera` 패키지 `CameraController.setFocusPoint(Offset)` + `setExposurePoint`. 프리뷰 GestureDetector 로 좌표 변환 (`Offset(dx/width, dy/height)` 정규화). 시각 피드백(초점 사각형 0.5초)도 같이.
-- **하단 시스템 바(제스처 내비/3-버튼) 가림** — 안드로이드 일부 기기에서 화면 하단 버튼이 시스템 내비게이션 바에 가려져 누르기 힘듦. 후보: ① `SafeArea` 점검 + bottomPadding 강제, ② 주요 액션을 상단 또는 FAB 로 이동, ③ `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` + 수동 inset 처리. 영향 화면 전수 점검 필요 (카메라 화면, 기록/수정 화면 등).
 - **영상 export 결과 카드** — 회의 보류 항목. 영상 끝 3초 결과 카드 vs 챌린지 확정 시 별도 화면. 챌린지 확정 화면 디자인과 같이 결정.
 - **목록에 메모 노출** — 챌린지 상세의 amount 목록 (`_AmountTile`) 에서 memo 가 있을 때 미리보기(1~2줄 ellipsis) 또는 메모 아이콘 배지. 결정 필요: 본문 노출이 좋은지 아이콘만 노출이 좋은지 (긴 메모가 목록 높이를 흔들 수 있음).
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
+  - **🚧 SafeArea(top:false) 픽스 검증 (2026-05-26 적용, 미검증)** — 직전 작업으로 11 화면 (amount_record / amount_edit / amount_camera / amount_video_preview / challenge_list / challenge_detail / challenge_create / export_screen / export_prefetch / export_compose / export_result) Scaffold body 에 `SafeArea(top: false)` 를 일관 적용했지만 작업 시점에 실기기 환경이 없어 빌드·런 확인을 못 했다. 검증 항목:
+    1. 모든 화면에서 하단 액션 버튼/콘텐츠가 시스템 내비게이션 바 위로 잘 노출되는지 (가림 없음).
+    2. 제스처 내비 ON 기기 + 3-버튼 내비 기기 양쪽 확인 (inset 값이 다름).
+    3. 키보드 떠 있을 때(TextField 포커스) 의도치 않은 점프/잘림 없는지 (특히 amount_record / amount_edit / challenge_create 의 메모 입력 시).
+    4. padding 이 비좁아 보이는 화면 있으면 그 화면만 추가 EdgeInsets 조정 (현재는 SafeArea 의 viewPadding 만 들어감).
+    5. 가로 방향 inset (제스처 영역) 도 보존되는지 노치/punch-hole 기기에서.
+  - **부작용 확인** — `SafeArea(top: false)` 가 ListView 의 마지막 항목과 시스템 바 사이에 visual gap 을 만든다. 챌린지 목록의 카드, amount 목록의 마지막 row 등이 의도된 만큼 떠 보이는지 확인. 너무 떠 있으면 child 의 padding 조정.
 
 ### 2. 페이지네이션 / 정렬
 - `/api/challenges`, `/api/challenges/{id}/amounts`가 전체 목록 반환 중. `Pageable` 도입 시점 결정 (지금은 사용자당 챌린지 수가 적어 무방).

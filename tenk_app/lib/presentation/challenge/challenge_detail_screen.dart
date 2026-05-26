@@ -219,28 +219,31 @@ class _ChallengeDetailScreenState extends State<ChallengeDetailScreen>
             ),
           ],
         ),
-        body: RefreshIndicator(
-          onRefresh: reload,
-          child: AsyncStateView<_Detail>(
-            data: data,
-            error: error,
-            loading: loading,
-            onRetry: reload,
-            builder: (_, detail) => _DetailBody(
-              challenge: detail.challenge,
-              amounts: detail.amounts,
-              busy: _busy,
-              onFinalize: detail.challenge.awaitsFinalize ? _finalize : null,
-              onRecordSpend: detail.challenge.isInProgress
-                  ? () => _openRecord(detail.challenge, noSpend: false)
-                  : null,
-              onRecordNoSpend: detail.challenge.isInProgress
-                  ? () => _openRecord(detail.challenge, noSpend: true)
-                  : null,
-              onEditAmount: (amount) => _openEdit(detail.challenge, amount),
-              onOpenExport: detail.challenge.result != null
-                  ? () => _openExport(detail.challenge, detail.amounts)
-                  : null,
+        body: SafeArea(
+          top: false,
+          child: RefreshIndicator(
+            onRefresh: reload,
+            child: AsyncStateView<_Detail>(
+              data: data,
+              error: error,
+              loading: loading,
+              onRetry: reload,
+              builder: (_, detail) => _DetailBody(
+                challenge: detail.challenge,
+                amounts: detail.amounts,
+                busy: _busy,
+                onFinalize: detail.challenge.awaitsFinalize ? _finalize : null,
+                onRecordSpend: detail.challenge.isInProgress
+                    ? () => _openRecord(detail.challenge, noSpend: false)
+                    : null,
+                onRecordNoSpend: detail.challenge.isInProgress
+                    ? () => _openRecord(detail.challenge, noSpend: true)
+                    : null,
+                onEditAmount: (amount) => _openEdit(detail.challenge, amount),
+                onOpenExport: detail.challenge.result != null
+                    ? () => _openExport(detail.challenge, detail.amounts)
+                    : null,
+              ),
             ),
           ),
         ),

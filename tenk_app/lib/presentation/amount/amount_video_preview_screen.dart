@@ -76,6 +76,7 @@ class _AmountVideoPreviewScreenState extends State<AmountVideoPreviewScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('영상 미리보기')),
       body: SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(

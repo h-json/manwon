@@ -92,25 +92,28 @@ class _ChallengeListScreenState extends State<ChallengeListScreen>
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: reload,
-        child: AsyncStateView<List<Challenge>>(
-          data: data,
-          error: error,
-          loading: loading,
-          onRetry: reload,
-          builder: (_, challenges) => challenges.isEmpty
-              ? const _EmptyView()
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: challenges.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _ChallengeCard(
-                    challenge: challenges[i],
-                    onTap: () => _openDetail(challenges[i]),
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
+          onRefresh: reload,
+          child: AsyncStateView<List<Challenge>>(
+            data: data,
+            error: error,
+            loading: loading,
+            onRetry: reload,
+            builder: (_, challenges) => challenges.isEmpty
+                ? const _EmptyView()
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: challenges.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) => _ChallengeCard(
+                      challenge: challenges[i],
+                      onTap: () => _openDetail(challenges[i]),
+                    ),
                   ),
-                ),
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
