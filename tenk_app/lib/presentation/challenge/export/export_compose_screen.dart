@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../data/amount/amount.dart';
 import '../../../data/challenge/challenge.dart';
+import '../../../data/export/result_card_capture.dart';
 import '../../../data/export/video_composer.dart';
 import 'export_plan.dart';
 
@@ -17,11 +19,21 @@ class ExportComposeScreen extends StatefulWidget {
   const ExportComposeScreen({
     super.key,
     required this.challenge,
+    required this.amounts,
     required this.plan,
+    required this.includeResultCard,
   });
 
   final Challenge challenge;
+
+  /// 결과 카드 PNG 캡처에 사용 (무지출 일수 계산 등). plan.clips 의 source 만으론 부족 — 사용자가
+  /// 선택 해제한 클립도 통계에 포함돼야 정확한 결과 카드가 나옴.
+  final List<Amount> amounts;
+
   final ExportPlan plan;
+
+  /// true 면 합성 시작 전 [ResultCardCapture] 로 PNG 캡처 후 마지막 정지 클립(3초)으로 concat.
+  final bool includeResultCard;
 
   @override
   State<ExportComposeScreen> createState() => _ExportComposeScreenState();
@@ -69,11 +81,31 @@ class _ExportComposeScreenState extends State<ExportComposeScreen> {
       final tmp = await getTemporaryDirectory();
       final outPath =
           '${tmp.path}/tenk_export/output_${widget.challenge.id}.mp4';
+
+      // 결과 카드 PNG 캡처는 ffmpeg 호출 전. compose 가 동기 흐름에서 받을 수 있도록 path 만 넘김.
+      String? resultCardPngPath;
+      if (widget.includeResultCard && mounted) {
+        final cardPath =
+            '${tmp.path}/tenk_export/result_card_${widget.challenge.id}.png';
+        await ResultCardCapture.captureToFile(
+          context: context,
+          challenge: widget.challenge,
+          amounts: widget.amounts,
+          // 영상 export 캡처에선 닉네임 fetch 를 안 한다 — UserScope 까진 가지만 await 비용 추가가
+          // 아쉽고, 결과 카드 화면이 닉네임을 띄우는 메인 진입점. 영상 마지막 카드는 헤더 단순화.
+          nickname: null,
+          outputPath: cardPath,
+          pixelRatio: 1.0, // 480x864 영상 해상도와 1:1
+        );
+        resultCardPngPath = cardPath;
+      }
+
       final result = await _composer.compose(
         plan: widget.plan,
         challengeTargetAmount: widget.challenge.targetAmount,
         challengeStartDate: widget.challenge.startDate,
         outputPath: outPath,
+        resultCardPngPath: resultCardPngPath,
         onPhase: (p) {
           if (mounted) setState(() => _progress = p);
         },

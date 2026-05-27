@@ -33,6 +33,10 @@ class _ExportScreenState extends State<ExportScreen> {
   /// 영상 합본에 들어갈 후보 클립. spentDt ASC 로 정렬 — 실제 합성 순서와 일치하게 보여준다.
   late final List<_Clip> _clips;
 
+  /// 결과 카드를 영상 끝에 3초 정지 화면으로 붙일지. 기본 ON.
+  /// 합성 단계에서 [ResultCardCapture] 로 PNG 캡처 → 마지막 클립으로 concat.
+  bool _includeResultCard = true;
+
   @override
   void initState() {
     super.initState();
@@ -103,7 +107,9 @@ class _ExportScreenState extends State<ExportScreen> {
       MaterialPageRoute<String>(
         builder: (_) => ExportComposeScreen(
           challenge: widget.challenge,
+          amounts: widget.amounts,
           plan: plan,
+          includeResultCard: _includeResultCard,
         ),
       ),
     );
@@ -151,6 +157,11 @@ class _ExportScreenState extends State<ExportScreen> {
                     challenge: widget.challenge,
                     selectedCount: selectedCount,
                     totalCount: _clips.length,
+                  ),
+                  _ResultCardToggle(
+                    value: _includeResultCard,
+                    onChanged: (v) =>
+                        setState(() => _includeResultCard = v),
                   ),
                   Expanded(
                     child: ListView.separated(
@@ -231,6 +242,53 @@ class _HeaderBanner extends StatelessWidget {
             '선택 $selectedCount / 전체 $totalCount',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 영상 끝에 결과 카드를 정지 화면으로 붙일지 토글. 기본 ON 으로 시작 — 끄고 싶은 사용자만 끔.
+class _ResultCardToggle extends StatelessWidget {
+  const _ResultCardToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.surfaceContainer,
+      padding: const EdgeInsets.fromLTRB(8, 4, 16, 12),
+      child: Row(
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: (v) => onChanged(v ?? false),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '결과 카드를 영상 끝에 포함',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '챌린지 결과 카드를 3초 정지 화면으로 마지막에 추가해요.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

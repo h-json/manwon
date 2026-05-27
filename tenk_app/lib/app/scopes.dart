@@ -4,6 +4,7 @@ import '../data/amount/amount_api.dart';
 import '../data/auth/auth_repository.dart';
 import '../data/challenge/challenge_api.dart';
 import '../data/media/media_api.dart';
+import '../data/user/user_api.dart';
 
 /// 트리 어디서든 [AuthRepository]를 꺼내쓰기 위한 단순 InheritedWidget.
 ///
@@ -88,5 +89,26 @@ class MediaScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(MediaScope oldWidget) => api != oldWidget.api;
+}
+
+/// 트리 어디서든 [UserApi]를 꺼내쓰기 위한 단순 InheritedWidget.
+/// 결과 카드 화면에서 닉네임 fetch 등에 사용.
+class UserScope extends InheritedWidget {
+  const UserScope({
+    super.key,
+    required this.api,
+    required super.child,
+  });
+
+  final UserApi api;
+
+  static UserApi of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<UserScope>();
+    assert(scope != null, 'UserScope not found in widget tree');
+    return scope!.api;
+  }
+
+  @override
+  bool updateShouldNotify(UserScope oldWidget) => api != oldWidget.api;
 }
 

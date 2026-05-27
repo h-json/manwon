@@ -3,7 +3,9 @@
 > 다른 컴퓨터/세션에서 이 작업을 이어받는 사람(또는 미래의 나)을 위한 인계 노트.
 > 영구적인 규칙·결정은 [../CLAUDE.md](../CLAUDE.md)에 있고, 이 문서는 **현재 진행 상태와 다음 할 일**만 기록함.
 
-마지막 갱신: 2026-05-26 (**하단 시스템 바 가림 픽스 — body SafeArea(top:false) 전 화면 일관 적용**. 안드로이드 일부 기기의 제스처 내비/3-버튼 바가 본문 하단을 깔아뭉개던 백로그 항목 처리. 처음엔 사용자가 핀포인트로 짚어준 4 화면만 손댔다가 "전체 일관성이 깨진다" 는 지적으로 전수 통일로 전환. **규칙**: AppBar 가 있는 모든 화면(현재 10 개)의 Scaffold body 를 `SafeArea(top: false, child: ...)` 로 감싸 bottom·side inset 만 처리 — top 은 AppBar 가 알아서. AppBar 없는 화면(login)은 `SafeArea(...)` 전체 방향. 화면별로 SafeArea 가 있는 곳·없는 곳이 섞여 있으면 디바이스 따라 가림이 들쭉날쭉해지므로 패턴을 화면 추가 시점에 동일하게 가져갈 것. **적용 화면**: amount_record / amount_edit / amount_camera / amount_video_preview / challenge_list / challenge_detail / challenge_create / export_screen / export_prefetch / export_compose / export_result. edge-to-edge 전환은 보류 — 작업량 크고 디자인 자유도가 당장 필요하지 않음. **⚠️ 실기기 미검증** — 작업 시점에 실기기 테스트 환경이 없어 빌드·런 확인을 못 했다. 다음 머신/세션에서 11 화면 전수로 안드로이드 실기기(특히 제스처 내비 ON 인 기기 + 3-버튼 내비 기기) 에서 하단 액션 버튼이 시스템 바 위로 노출되는지 확인해야 한다. 자세한 체크리스트는 아래 "남은 일 §1 실기기 테스트" 참고. 다음 우선순위는 백로그 다음 항목 (업적 시스템 / 영상 export 결과 카드 / 메모 노출).)
+마지막 갱신: 2026-05-26 (**챌린지 결과 카드 — 풀스크린 화면 + 영상 export 마지막 클립 통합**. 회의 결정 9개 (진입점, 비율, 영상 포함, 모달 충돌, 닉네임, 색 분기, 카테고리, 표시 형태, 카드 정지 시간) 그대로 반영. **신규 도메인** [presentation/challenge/result_card/](../tenk_app/lib/presentation/challenge/result_card/) (`result_card_widget.dart` + `result_card_screen.dart`) + 캡처 헬퍼 [data/export/result_card_capture.dart](../tenk_app/lib/data/export/result_card_capture.dart) + 신규 데이터 [data/user/](../tenk_app/lib/data/user/) (UserApi + UserScope, `/api/users/me` 로 닉네임 fetch). 진입점 2개: ① finalize 직후 자동 풀스크린 push — 기존 `_finalize` 의 배지 모달 큐 끝난 뒤 ② 챌린지 상세의 "결과 카드" 카드 (확정 후). 영상 export 화면 체크박스 (기본 ON) 로 마지막 3초 정지 클립 합성 — [VideoComposer.compose](../tenk_app/lib/data/export/video_composer.dart) `resultCardPngPath` 옵션 + `_normalizeStaticImageClip` 헬퍼 + `_concatWithXfade` 가 가변 duration 지원하게 시그니처 변경 (`durations: List<double>`, 기존 단일 길이 가정 제거). 캡처 패턴 = Overlay off-screen + RepaintBoundary + 배지 자산 precache + 2 frame 대기 → `toImage(pixelRatio)`. 색은 ThemeData 안 쓰고 위젯에 hardcode — 캡처가 컨텍스트 변동 영향 안 받게. 디테일은 아래 "결과 카드 회의록" 참고. **백엔드 변경 0**. flutter analyze 0 issues. **⚠️ 실기기 미검증** — 직전 SafeArea 픽스와 마찬가지로 작업 환경에서 빌드·런을 못 했음. 검증 항목은 아래 "남은 일 §1 실기기 테스트" 에 추가. 다음 우선순위는 업적 시스템 또는 메모 노출.)
+
+이전 갱신: 2026-05-26 (**하단 시스템 바 가림 픽스 — body SafeArea(top:false) 전 화면 일관 적용**. 안드로이드 일부 기기의 제스처 내비/3-버튼 바가 본문 하단을 깔아뭉개던 백로그 항목 처리. 처음엔 사용자가 핀포인트로 짚어준 4 화면만 손댔다가 "전체 일관성이 깨진다" 는 지적으로 전수 통일로 전환. **규칙**: AppBar 가 있는 모든 화면(현재 10 개)의 Scaffold body 를 `SafeArea(top: false, child: ...)` 로 감싸 bottom·side inset 만 처리 — top 은 AppBar 가 알아서. AppBar 없는 화면(login)은 `SafeArea(...)` 전체 방향. 화면별로 SafeArea 가 있는 곳·없는 곳이 섞여 있으면 디바이스 따라 가림이 들쭉날쭉해지므로 패턴을 화면 추가 시점에 동일하게 가져갈 것. **적용 화면**: amount_record / amount_edit / amount_camera / amount_video_preview / challenge_list / challenge_detail / challenge_create / export_screen / export_prefetch / export_compose / export_result. edge-to-edge 전환은 보류 — 작업량 크고 디자인 자유도가 당장 필요하지 않음. **⚠️ 실기기 미검증** — 작업 시점에 실기기 테스트 환경이 없어 빌드·런 확인을 못 했다. 다음 머신/세션에서 11 화면 전수로 안드로이드 실기기(특히 제스처 내비 ON 인 기기 + 3-버튼 내비 기기) 에서 하단 액션 버튼이 시스템 바 위로 노출되는지 확인해야 한다. 자세한 체크리스트는 아래 "남은 일 §1 실기기 테스트" 참고. 다음 우선순위는 백로그 다음 항목 (업적 시스템 / 영상 export 결과 카드 / 메모 노출).)
 
 이전 갱신: 2026-05-26 (**카메라 녹화 시작 효과음 — royalty-free MP3 + 탭 즉시 트리거 분리**. ① 합성음 한계: 1차 1200Hz sine → 2차 종소리 chime → 3차 두 음 ascending ding 까지 시도했지만 셋 다 "합성음 같다" 인상 못 벗음. 결국 royalty-free MP3 다운로드로 갈아탐 ([assets/sounds/record_start.mp3](../tenk_app/assets/sounds/record_start.mp3)). README 의 PowerShell 합성 스니펫은 제거하고 사이트 후보 (freesound/pixabay/mixkit/zapsplat/soundbible) 만 남김. ② 트리거 위치 분리: 기존엔 효과음+햅틱+morph snap 셋 다 `_recording=true` 전환 시점 (= `startVideoRecording` resolve + `_encoderStartLag` 1초 뒤) 이었는데, 사용자 인지 모델로는 "녹화 중에 소리가 났다" 로 어색하게 잡힘 (영상엔 enableAudio:false 라 안 들어가도). 효과음만 탭 즉시로 옮겨 "버튼 인식" 신호로 분리, 햅틱+snap 은 녹화 시작 시점 유지해 "지금부터 녹화" 신호로 역할 분리. 카메라 화면 작업은 여기서 일단락 — 다음 우선순위는 "남은 일 #1 앱 UX 다듬기 백로그")
 
@@ -99,6 +101,21 @@
   - **인코더 시행착오 (놓치면 같은 함정 재방문)**: `h264_mediacodec`(hw) → return code 0 인데 빈 컨테이너 silent fail. `libx264`(sw H.264) → GPL 이라 'video' 변종 빌드에 미포함. `libkvazaar`(sw HEVC) → cleanup 단계 native crash (`pthread_mutex_destroy called on a destroyed mutex`). 최종 정착은 ffmpeg 내장 **`mpeg4` (MPEG-4 Part 2, LGPL)**. 자세한 경로는 [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) `_videoEncoder` 상단 주석 + 본 문서 "함정 — H.264/HEVC sw 인코더 다 막힘".
   - **보류 — 결과 카드**: 회의에서 보류된 "영상 끝 3초 결과 카드" 는 이번 구현에 미포함. 챌린지 확정 화면 자체가 분리될 가능성 때문에 후속 결정으로 미룸.
 
+- ✅ **챌린지 결과 카드 — 풀스크린 + 영상 export 마지막 클립** (2026-05-26). 회의 결정 9개 그대로 반영. 영상 export 와 무관하게 챌린지 확정 후 항상 표시되는 1장 카드 (480x864 9:16). flutter analyze 0 issues. **⚠️ 실기기 미검증** (작업 환경 한계).
+  - **신규 도메인**:
+    - [presentation/challenge/result_card/result_card_widget.dart](../tenk_app/lib/presentation/challenge/result_card/result_card_widget.dart) — 480x864 고정 사이즈 위젯. 색은 ThemeData 안 쓰고 hardcode (성공 = 노랑 그라데이션 + 보라 accent + 🎉, 실패 = 그레이 + 다크 accent + 💪). 빈 슬롯 fallback (배지 0개 / 무지출 0일 → 라인 통째 생략).
+    - [presentation/challenge/result_card/result_card_screen.dart](../tenk_app/lib/presentation/challenge/result_card/result_card_screen.dart) — 풀스크린 라우트. FittedBox 로 480x864 카드를 디바이스 비율에 맞춰 표시 + 갤러리 저장/공유 두 버튼. 닉네임 fetch 는 화면 진입 후 background ([UserScope] 통해 `/api/users/me`), fetch 실패하면 헤더만 "만원 챌린지" 로 폴백. 캡처는 첫 호출 시 PNG 1번 만들어 같은 세션 내 재사용.
+    - [data/export/result_card_capture.dart](../tenk_app/lib/data/export/result_card_capture.dart) — Overlay off-screen + RepaintBoundary 패턴. 호출자가 `pixelRatio` 선택 (영상용 1.0 / 갤러리·공유용 2.0). 배지 자산 `precacheImage` + 2 frame 대기 필수 — Image.asset 첫 프레임 placeholder 캡처 회귀 방지.
+    - [data/user/user.dart](../tenk_app/lib/data/user/user.dart) + [user_api.dart](../tenk_app/lib/data/user/user_api.dart) — UserResponse 모델 + `GET /api/users/me` 호출. [app/scopes.dart](../tenk_app/lib/app/scopes.dart) `UserScope` 추가 + [main.dart](../tenk_app/lib/main.dart) 의존성 주입. 카카오 SDK 의 `UserApi` 와 이름 충돌해서 `hide UserApi` 추가.
+  - **진입점 2개**:
+    - **자동**: [ChallengeDetailScreen._finalize](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) 에서 배지 모달 큐 끝난 뒤 `_openResultCard` 호출 — finalize 콜백 경로에서만 push, 첫 로드 / 재진입에는 자동 push 안 됨. 결정 사유 = 모달 충돌은 "배지 → 결과 카드 순차" 로 페이오프 계단.
+    - **상세 진입점**: 확정된 챌린지에서만 노출되는 `_ResultCardEntryCard` ([같은 파일](../tenk_app/lib/presentation/challenge/challenge_detail_screen.dart)). 영상 만들기 카드 위에 위치 (1순위가 결과 보기).
+  - **영상 export 마지막 클립**:
+    - [export_screen.dart](../tenk_app/lib/presentation/challenge/export/export_screen.dart) 헤더 배너 아래에 `_ResultCardToggle` 체크박스 (기본 ON) + `_includeResultCard` state.
+    - [export_compose_screen.dart](../tenk_app/lib/presentation/challenge/export/export_compose_screen.dart) 가 합성 시작 직전에 `ResultCardCapture.captureToFile(pixelRatio: 1.0)` 호출 → PNG path 만들고 `VideoComposer.compose` 의 신규 `resultCardPngPath` 옵션으로 전달. 영상 export 의 카드는 닉네임 fetch 안 함 (결과 카드 화면이 닉네임 표시 메인 진입점, compose 시작 지연 회피).
+    - [video_composer.dart](../tenk_app/lib/data/export/video_composer.dart) `compose()` 가 `resultCardPngPath: String?` 받음 — `_normalizeStaticImageClip` 헬퍼로 `-loop 1 -t 3.0` 3초 mpeg4 클립 만들고 기존 정규화 출력 뒤에 추가. **`_concatWithXfade` 시그니처 변경** — 단일 `_clipDurationSec` 가정 제거 + `durations: List<double>` 받음. xfade offset 누적이 클립별 가변 duration 으로 계산되도록 변경 (기존 모든-2초 케이스 결과는 동일).
+  - **백엔드 변경 0**. 기존 challenge / amounts / users/me 응답으로 모두 충분.
+
 - ✅ **카메라 녹화 시작 UX — preview freeze 제거 + transitional morph + 효과음** (2026-05-25). 안드로이드 실기기에서 녹화 시작 시 ① 프리뷰가 잠깐 정지하고 ② 어떤 시각/청각 시그널도 없어 "버튼이 안 먹힌 건가" 로 읽히던 문제 처리.
   - **프리뷰 freeze 원인 제거**: 업스트림 `camera_android_camerax 0.7.2` 가 VideoCapture UseCase 를 `startVideoCapturing` 시점에 lazy bind 라 Camera2 capture session 이 재구성됨 → preview 일시 정지. [vendor fork](../tenk_app/vendor/camera_patched/camera_android_camerax/) 로 fork 떠서 `initializeCamera` 의 `bindToLifecycle` 에서 `imageAnalysis` 자리에 `videoCapture` 를 넣어 eager bind + `stopVideoRecording` 의 unbind 도 제거. `pubspec.yaml` `dependency_overrides` 로 주입. Tenk 는 image stream 을 안 쓰므로 ImageAnalysis 는 lazy 가 무해. CameraX UseCase 조합 표 기준 P+IC+VC 는 LIMITED 이상에서 지원 (4-way 는 LEVEL_3 한정이라 회피). 자세한 절차·재적용 가이드는 [../CLAUDE.md](../CLAUDE.md) "위치별 책임 — camera 패키지 fork 갱신" 행.
   - **시작 transition 의 UX 원칙 — 단방향 모양 변화**: 대기 구간 애니메이션을 idle UI 와 recording UI 를 잇는 단방향 morph 로 통일. 안쪽 빨간 원(56px) → 둥근 사각형(28px) 3구간 piecewise (12% anticipation = scale 0.95, 73% main morph = easeInOutCubic 로 size·radius lerp, 15% snap = scale 1→1.15→1 sine bump). [_RecordButton._morphShape](../tenk_app/lib/presentation/amount/amount_camera_screen.dart). 라디오 링·preview 빨간 글로우·심박 펄스 시도했다가 제거 — 정지 효과로 읽혀 "지금 뭐가 일어나는지" 가 안 전달됐기 때문. 회귀 금지.
@@ -146,11 +163,19 @@
 
 ## 남은 일 (우선순위 순)
 
-> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export + 배지 획득 축하 모달 + 카메라 녹화 시작 UX (transitional morph + 효과음 royalty-free MP3 + 탭 즉시 트리거 분리) 모두 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고. **카메라 화면 작업은 일단락** — 다음은 다른 백로그.
+> 백엔드 테스트(단위·통합·WebMvc) + 영상 합본 export + 배지 획득 축하 모달 + 카메라 녹화 시작 UX (transitional morph + 효과음 royalty-free MP3 + 탭 즉시 트리거 분리) + 챌린지 결과 카드 (풀스크린 + 영상 마지막 클립 합성) 모두 ✅ 완료. 자세한 건 "완료된 것" 섹션 참고. **카메라 / 결과 카드 도메인 일단락** — 다음은 다른 백로그.
 
 ### 1. 앱 UX 다듬기 (백로그)
+- **회원가입 시 닉네임 설정 화면 추가** — 현재 `AuthService.kakaoLogin` 은 신규 유저를 카카오 닉네임 그대로 자동 프로비저닝하고 바로 AT/RT 만 돌려준다. 사용자가 본인 닉네임을 직접 정할 수 있게 신규 가입 분기에서 닉네임 설정 화면을 띄울 것. **기본값은 카카오톡 프로필 닉네임으로 prefill** (수정·그대로 둘 수 있음). 구현 방향 후보:
+  - (a) 백엔드 응답에 `isNewUser` 플래그 추가 → Flutter 가 SessionGate 직후 해당 플래그 보고 NicknameSetupScreen 으로 분기 → 사용자가 확정하면 기존 user update API (혹은 신규 `POST /api/users/me/nickname`) 호출.
+  - (b) 별도 `/api/auth/kakao/signup` 엔드포인트를 만들어 nickname 을 body 로 받음 (카카오 토큰 검증 → 첫 가입이면 닉네임 적용해서 user 생성, 이미 있으면 일반 로그인 분기).
+  - 검토 포인트: (a) 가 카카오 SDK 재호출 없이 한 번의 토큰 검증으로 끝나서 가볍다. 단점은 자동 프로비저닝 후 닉네임 수정 전 사용자가 앱을 끄면 카카오 닉네임이 남는 점 — 다음 진입 시 닉네임 화면 다시 띄울지 여부 결정 필요. 회의 후 결정.
+  - 동시 영향: User 모델·DTO·schema.sql (이미 nickname 컬럼은 있음) / Flutter `app/session_gate.dart` 분기 + 신규 화면 + auth_repository 갱신.
+- **챌린지 이름 필드 추가** — 챌린지 생성 시 사용자 정의 이름(예: "5월 외식 줄이기", "여행 전 비상금 챌린지") 을 설정할 수 있게. 현재는 `targetAmount` + 기간만 있어 목록에서 챌린지끼리 구분이 어렵다. 구현 범위:
+  - 백엔드: `Challenge.name VARCHAR(100) NOT NULL` 추가, `ChallengeCreateRequest` `@NotBlank @Size(max=100) name`, `ChallengeResponse` 노출, [docs/schema.sql](schema.sql) 컬럼 추가 (DROP & RECREATE 1회 적용 필요), invariant 테스트 추가.
+  - Flutter: [Challenge](../tenk_app/lib/data/challenge/challenge.dart) 모델 + [challenge_api.dart](../tenk_app/lib/data/challenge/challenge_api.dart) request body, [challenge_create_screen.dart](../tenk_app/lib/presentation/challenge/challenge_create_screen.dart) 에 입력 필드(필수), [challenge_list / challenge_detail](../tenk_app/lib/presentation/challenge/) 카드·헤더에 이름 노출 (현재 `targetAmount` 강조 자리 일부를 양보하거나 위에 한 줄 더).
+  - 결정 필요: ① 필수 vs 선택 (필수 권장 — 목록 구분 목적이라 빈 이름은 의미 없음) ② 최대 길이 (100 안에서 충분히 길어 보이는지) ③ 기존 챌린지 마이그레이션 (드롭/리크리에이트 정책이라 사실상 무관, 다만 prod 운영 시작 후엔 마이그레이션 필요).
 - **업적(achievement) 시스템** — 챌린지 경계를 가로지르는 누적 보상. 새 테이블(예: `user_achievement`) + 별도 컨트롤러/서비스 + 별도 Flutter 화면. 자산은 기존 `assets/badges/` 재활용 가능. 배지와 디자인 언어가 자연스럽게 이어지도록 설계.
-- **영상 export 결과 카드** — 회의 보류 항목. 영상 끝 3초 결과 카드 vs 챌린지 확정 시 별도 화면. 챌린지 확정 화면 디자인과 같이 결정.
 - **목록에 메모 노출** — 챌린지 상세의 amount 목록 (`_AmountTile`) 에서 memo 가 있을 때 미리보기(1~2줄 ellipsis) 또는 메모 아이콘 배지. 결정 필요: 본문 노출이 좋은지 아이콘만 노출이 좋은지 (긴 메모가 목록 높이를 흔들 수 있음).
 - **실기기 테스트** — `--dart-define=API_BASE_URL=http://192.168.x.x:8080`로 같은 Wi-Fi의 PC IP 주입. 에뮬레이터와 카메라 동작이 미묘하게 다름.
   - **🚧 SafeArea(top:false) 픽스 검증 (2026-05-26 적용, 미검증)** — 직전 작업으로 11 화면 (amount_record / amount_edit / amount_camera / amount_video_preview / challenge_list / challenge_detail / challenge_create / export_screen / export_prefetch / export_compose / export_result) Scaffold body 에 `SafeArea(top: false)` 를 일관 적용했지만 작업 시점에 실기기 환경이 없어 빌드·런 확인을 못 했다. 검증 항목:
@@ -160,6 +185,16 @@
     4. padding 이 비좁아 보이는 화면 있으면 그 화면만 추가 EdgeInsets 조정 (현재는 SafeArea 의 viewPadding 만 들어감).
     5. 가로 방향 inset (제스처 영역) 도 보존되는지 노치/punch-hole 기기에서.
   - **부작용 확인** — `SafeArea(top: false)` 가 ListView 의 마지막 항목과 시스템 바 사이에 visual gap 을 만든다. 챌린지 목록의 카드, amount 목록의 마지막 row 등이 의도된 만큼 떠 보이는지 확인. 너무 떠 있으면 child 의 padding 조정.
+  - **🚧 결과 카드 검증 (2026-05-26 적용, 미검증)** — finalize 자동 풀스크린 + 진입점 카드 + 영상 export 마지막 클립 합성 모두 빌드·런 검증 미수행. 검증 항목:
+    1. **자동 진입점**: 진행 중 챌린지를 SQL `UPDATE challenge SET start_date = CURDATE() - INTERVAL 1 DAY, end_date = CURDATE() - INTERVAL 1 DAY WHERE id = ?` 로 backdate 후 앱에서 "결과 확정하기" 탭 → 배지 모달(있다면) 뒤 결과 카드 풀스크린이 자동으로 뜨는지. 두 번째 진입 (앱 재진입 시) 엔 자동 push 가 일어나지 않아야 함 — finalize 콜백 경로에서만 push.
+    2. **상세 진입점**: 확정된 챌린지 상세에 "결과 카드" 카드가 영상 만들기 카드 위에 노출되는지. 탭 시 풀스크린 진입.
+    3. **닉네임 fetch**: 카드 헤더가 "○○님의 만원 챌린지" 로 표시되는지 (카카오 닉네임). 백엔드가 느리거나 실패하면 그냥 "만원 챌린지" 로 폴백 — 화면이 안 깨져야 함.
+    4. **갤러리 저장**: 한 번 누른 뒤 "저장됨" 으로 라벨 바뀜 + Tenk 앨범에 PNG 저장 확인. HiDPI 디바이스에서 960x1728 해상도로 저장되는지 (pixel ratio 2.0).
+    5. **공유**: PNG 가 share sheet 에 실리는지. 인스타 스토리·카카오톡 등 앱별 다이얼로그 정상 통과.
+    6. **영상 export 결과 카드 포함**: export 화면의 체크박스 기본 ON 상태에서 영상 만들기 → 합성 결과 영상 끝에 결과 카드가 3초 정지 화면으로 들어가는지. xfade 0.3초로 자연스럽게 들어와야. 체크 해제 시 결과 카드 없이 영상만 생성.
+    7. **빈 슬롯**: 배지 0개 챌린지에서 결과 카드의 배지 row 가 통째 사라지는지 (높이도 안 잡힘). 무지출 0일 챌린지에서 통계 카드의 "무지출" 라인 사라지는지.
+    8. **성공/실패 색**: 성공 = 노랑 그라데이션 + 보라 accent + 🎉. 실패 = 그레이 + 다크 accent + 💪. 캡처된 PNG 도 동일한 색감 (ThemeData 영향 안 받음).
+  - **부작용 확인**: 영상 export 진행 중 PNG 캡처가 추가됐는데 (compose 시작 시점에 한 번) — 진행 표시 화면이 멈춰 보이지 않는지. compose 단계에서 약간의 추가 지연 (≤ 1초) 발생.
 
 ### 2. 페이지네이션 / 정렬
 - `/api/challenges`, `/api/challenges/{id}/amounts`가 전체 목록 반환 중. `Pageable` 도입 시점 결정 (지금은 사용자당 챌린지 수가 적어 무방).
@@ -268,6 +303,37 @@ IP 확인: PowerShell `ipconfig` → "이더넷 어댑터 Wi-Fi" 의 IPv4 주소
 
 ### 알려진 갭
 - **PUT 엔드포인트 통합 테스트 없음** — 현재 [AmountServiceTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/amount/AmountServiceTest.java) 가 Mockito 단위 테스트라 multipart 파싱·`@Valid`·시큐리티 필터를 거치지 않는다. `AmountController.record/delete` 도 통합 테스트가 없어 컨벤션과는 일관이지만, multipart wiring 회귀를 잡을 가드가 없는 건 사실. 다음에 amount 컨트롤러 만질 일 있으면 [BadgeEventIntegrationTest](../tenk-backend/src/test/java/com/hjson/tenk/domain/badge/BadgeEventIntegrationTest.java) 패턴으로 `AmountControllerIntegrationTest` 추가하는 게 좋음.
+
+---
+
+## 결과 카드 회의록 (2026-05-26)
+
+> 영상 내보내기와는 무관하게 챌린지 확정 후 결과를 1장 카드로 보여주는 기능. 영상 export 와는 별개 도메인이지만 마지막 클립으로 합성하는 옵션도 같이 결정.
+
+### 사용자 요구사항 (원문 요약)
+- 챌린지 종료 후 그 챌린지에 대한 결과 카드. 이미지로 저장하기, 내보내기.
+- 영상 내보내기 했을 때 제일 마지막에도 결과 카드를 포함시킬 수 있게.
+
+### 결정 사항 (9)
+1. **진입점 = finalize 직후 자동 + 챌린지 상세 진입점 둘 다**. 확정 순간엔 페이오프 모먼트로 자동 풀스크린 push, 나중에 공유하려고 다시 볼 수 있게 상세 화면에 카드 한 장 추가.
+2. **비율 = 세로 9:16 / 480x864**. 영상 export 해상도와 1:1 — 마지막 정지 카드로 그대로 붙일 수 있고 (스케일링 0), 스토리/릴스 공유 동선과 일치.
+3. **영상 export 포함 = 체크박스 (기본 ON)**. export 화면에 "결과 카드를 영상 끝에 포함" 토글. 끄고 싶은 사용자만 끔.
+4. **모달 충돌 = 배지 모달 → 결과 카드 순차**. 결과 카드 안에 획득 배지 row 가 있지만 배지 모달도 그대로 진행해 페이오프 계단을 만든다. 결과 카드가 페이오프 통합 후보였지만, 챌린지 성과가 헤드라인이고 배지는 후속 보상이라 두 단계로 가는 게 명확.
+5. **닉네임 = "○○님의 만원 챌린지" 포함** (카카오 닉네임 fetch). 카드 진입 시점에 한 번 `/api/users/me` 호출. fetch 실패하면 그냥 "만원 챌린지" 로 폴백 — 안 깨짐. 영상 export 의 카드는 fetch 안 함 (compose 시작 지연 회피).
+6. **성공/실패 색 = 드라마틱 대비**. 성공 = 따뜻한 노랑 그라데이션 + 보라 accent + 🎉. 실패 = 그레이 그라데이션 + 다크 그레이 accent + 💪. 결과가 증명사진처럼 명확해야.
+7. **카테고리 분포 제외**. 9:16 자리 빡빡 + 숫자/배지로 정보감 충분. 통계 카드 = 목표/사용/절약(또는 초과)/무지출 4개 라인만.
+8. **표시 형태 = 풀스크린 라우트** (모달 X). 480x864 비율을 화면에 띄우면 거의 꽉 차 모달로 띄울 이유가 없음. 영상 export 결과 화면 ([export_result_screen.dart](../tenk_app/lib/presentation/challenge/export/export_result_screen.dart)) 의 갤러리 저장/공유 두 버튼 패턴 그대로 차용.
+9. **영상 마지막 카드 정지 시간 = 3초**. 영상 클립 2초 + xfade 0.3초 흐름에 이어서 수자/배지/닉네임 읽을 시간 확보. 2.5초는 짧고 4초는 임팩트로 끝나야 하는 마지막을 늘어뜨림.
+
+### 보류·미반영
+- **닉네임 옵션화** — 카드에 닉네임 노출을 설정에서 끄는 토글은 안 둠 (설정 화면 자체가 아직 없음 — 회원가입 시 닉네임 설정 화면 백로그 작업 시 같이 검토).
+- **결과 카드 자체 캐싱** — 같은 챌린지 결과 카드를 PNG 로 백엔드/디스크에 영구 저장은 안 함. 매번 challenge + amounts 응답으로 동적 생성 (가벼움).
+
+### 함정·교훈
+- **색은 ThemeData 안 쓰고 hardcode**. RepaintBoundary 캡처 시 ThemeData 가 영향 안 받게. 위젯 안에서 모든 색을 const Color 로 박아둠. 회귀 금지.
+- **배지 자산 precache 필수**. Image.asset 의 첫 프레임이 placeholder 라 캡처에 비어 들어갈 수 있음. ResultCardCapture 가 호출 전 challenge.badges 전체를 precacheImage 로 미리 캐시.
+- **off-screen Overlay + RepaintBoundary 패턴**. 위치는 안 보여도 layout/paint 가 정상 수행되고 RepaintBoundary 가 layer 를 그대로 캡처. Off-screen 좌표는 `-2*width` 로 충분히 멀게.
+- **`_concatWithXfade` 가 단일 clipLen 가정**이었던 부분 — 마지막 3초 카드 추가로 가변 duration 으로 변경했음. 다른 가변 클립이 들어와도 그대로 동작. 회귀 시 단일 길이 가정 코드로 돌아가지 말 것.
 
 ---
 

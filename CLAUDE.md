@@ -146,7 +146,16 @@ tenk/                       # 리포 루트 (CLAUDE.md/docs는 양쪽 공통)
 
 ### 내보내기
 - **JSON 통계 export** (`GET /api/challenges/{id}/export`): 일별·카테고리별 집계 + 전체 item 목록. 통계·외부 연동용으로 유지. 화면 구성은 클라이언트 몫.
-- **영상 합본 export (구현 완료)**: 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 내보내는 기능. 클라이언트 측 `ffmpeg_kit_flutter_new_video` 로 처리. 진입은 챌린지 상세 화면의 "영상 만들기" 카드 (확정 후에만 노출). 파이프라인은 ① 원본 영상 prefetch → ② 클립 단위 정규화(480x864 세로, 2초, 자막 PNG overlay 합성, mpeg4) → ③ 0.3초 xfade 로 concat → ④ 갤러리 저장(`gal`) + OS 공유(`share_plus`). **자막은 Flutter `TextPainter` 로 투명 PNG 를 그려 ffmpeg `overlay` 필터로 합성** — ffmpeg 8.0 drawtext 가 multi-codepoint 한글에서 첫 글리프만 그리고 뒤를 silent drop 시키는 회귀가 있어 (`text=`/`textfile=`/`text_shaping=0`/폰트 교체 모두 무효) drawtext 자체를 우회. 자세한 결정·범위·진단 경로는 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록" 및 "함정 — drawtext 한글 회귀".
+- **영상 합본 export (구현 완료)**: 챌린지 확정 후 기록 영상을 시간순으로 합쳐 1개 MP4 로 내보내는 기능. 클라이언트 측 `ffmpeg_kit_flutter_new_video` 로 처리. 진입은 챌린지 상세 화면의 "영상 만들기" 카드 (확정 후에만 노출). 파이프라인은 ① 원본 영상 prefetch → ② 클립 단위 정규화(480x864 세로, 2초, 자막 PNG overlay 합성, mpeg4) → ③ 0.3초 xfade 로 concat → ④ 갤러리 저장(`gal`) + OS 공유(`share_plus`). **자막은 Flutter `TextPainter` 로 투명 PNG 를 그려 ffmpeg `overlay` 필터로 합성** — ffmpeg 8.0 drawtext 가 multi-codepoint 한글에서 첫 글리프만 그리고 뒤를 silent drop 시키는 회귀가 있어 (`text=`/`textfile=`/`text_shaping=0`/폰트 교체 모두 무효) drawtext 자체를 우회. 자세한 결정·범위·진단 경로는 [docs/handoff.md](docs/handoff.md) "영상 내보내기 회의록" 및 "함정 — drawtext 한글 회귀". **결과 카드는 별도 도메인** — 아래 "결과 카드" 섹션 참고. export 화면 체크박스(기본 ON)로 영상 끝에 3초 정지 화면으로 합성 가능.
+
+### 결과 카드 (구현 완료)
+- **챌린지 결과를 1장 카드로** — 480x864 (9:16) 세로 PNG. 영상 export 와 무관하게 챌린지 확정 후 항상 표시. 진입점 **2개**: ① finalize 직후 자동 풀스크린 push (배지 모달 큐가 끝난 뒤) ② 챌린지 상세의 "결과 카드" 카드 (확정 후에만 노출). 영상 export 마지막에 **3초 정지 화면**으로도 포함 가능 (export 화면 체크박스, 기본 ON).
+- **모달 충돌 정책**: finalize 직후엔 **배지 모달 → 결과 카드 풀스크린** 순차. 결과 카드 안에 획득 배지 row 가 있지만 배지 모달도 그대로 진행해 페이오프 계단을 만든다.
+- **닉네임 노출**: "○○님의 만원 챌린지" — `/api/users/me` 로 fetch ([UserApi](tenk_app/lib/data/user/user_api.dart) / [UserScope](tenk_app/lib/app/scopes.dart)). fetch 실패하거나 미완 상태에서 캡처되면 헤더만 "만원 챌린지" 로 fallback. **영상 export 마지막 카드는 닉네임을 fetch 하지 않는다** — compose 시작 지연 회피 + 결과 카드 화면이 닉네임 표시 메인 진입점.
+- **성공/실패 색 분기 (드라마틱 대비)**: 성공 = 따뜻한 노랑 그라데이션 + 보라 accent + 🎉. 실패 = 그레이 그라데이션 + 다크 그레이 accent + 💪. 색은 **위젯에 hardcode** ([ResultCardWidget](tenk_app/lib/presentation/challenge/result_card/result_card_widget.dart) `_bgTop`/`_bgBottom`/`_accent`/`_muted`) — 캡처 시 ThemeData 변동 영향 안 받아야.
+- **콘텐츠**: 닉네임 헤더 / 기간 / 결과 라벨 + 부제 (절약/초과 금액) / 통계 카드 (목표/사용/절약(또는 초과)/무지출 — 무지출 0일이면 라인 생략) / 배지 row (없으면 통째 생략, 최대 6 + N) / Tenk 워터마크. **카테고리 분포는 의도적으로 제외** (자리 빡빡 + 숫자/배지로 충분).
+- **PNG 캡처 패턴** ([ResultCardCapture](tenk_app/lib/data/export/result_card_capture.dart)): Overlay 에 `Positioned(left: -2*width)` 로 화면 밖 좌표에 RepaintBoundary 로 감싸진 ResultCardWidget 을 잠시 띄움 → 배지 자산 `precacheImage` → 2 frame 대기 → `boundary.toImage(pixelRatio)` → PNG bytes → 파일. 사유: 위치는 안 보여도 layout/paint 는 정상 수행되고 RepaintBoundary 가 layer 를 그대로 캡처. 갤러리/공유용은 `pixelRatio: 2.0` (960x1728 HiDPI), 영상 export 용은 `1.0` (480x864 영상 해상도와 1:1). **배지 precache 가 필수** — Image.asset 의 첫 프레임 placeholder 가 캡처되는 회귀 방지.
+- **영상 마지막 카드 클립** ([VideoComposer.compose](tenk_app/lib/data/export/video_composer.dart) `resultCardPngPath` 옵션): PNG 가 480x864 라 scale/pad noop, `-loop 1 -t 3.0` 으로 3초 정지 mpeg4 클립 생성 → 기존 normalize 출력들 뒤에 추가 → concat 에 포함. `_concatWithXfade` 는 클립별 가변 duration 지원 (`durations: List<double>`) — 마지막 3초 + 앞 클립들 2초가 섞여도 xfade offset 누적이 정확. xfade 길이는 동일하게 0.3초. 카드 정지 시간 결정은 [docs/handoff.md](docs/handoff.md) "결과 카드 회의록" 참고.
 
 ## 패키지 구조 (백엔드)
 
@@ -201,8 +210,11 @@ lib/
 │   │   └── badge.dart
 │   ├── media/                    # 영상 다운로드 (export prefetch 용)
 │   │   └── media_api.dart
-│   └── export/                   # ffmpeg 영상 합본 합성 (외부 통신 X, 로컬 처리)
-│       └── video_composer.dart     # 정규화→concat 2-pass. mpeg4 sw 인코더 고정
+│   ├── user/                     # 사용자 정보 (현재는 닉네임 조회 — 결과 카드 헤더용)
+│   │   ├── user.dart, user_api.dart
+│   └── export/                   # ffmpeg 영상 합본 합성 + 결과 카드 PNG 캡처 (외부 통신 X, 로컬 처리)
+│       ├── video_composer.dart     # 정규화→concat 2-pass. mpeg4 sw 인코더 고정. resultCardPngPath 옵션
+│       └── result_card_capture.dart  # Overlay off-screen + RepaintBoundary → PNG. video/gallery 두 해상도
 └── presentation/               # 화면. data 레이어를 Scope로만 호출
     ├── common/                   # 도메인 무관 공용 위젯·헬퍼
     │   ├── async_state.dart        # AsyncStateMixin + AsyncStateView (필수 — 아래 컨벤션 참고)
@@ -216,10 +228,13 @@ lib/
     │   │   └── badge_celebration_dialog.dart  # 신규 배지 획득 시 풀스크린 축하 모달 + 큐 헬퍼
     │   ├── export/                 # 영상 합본 export 흐름 (확정 후에만 진입)
     │   │   ├── export_plan.dart      # 세션 한정 모델 (선택 + 자막 오버라이드)
-    │   │   ├── export_screen.dart    # 클립 선택 + 자막 편집
+    │   │   ├── export_screen.dart    # 클립 선택 + 자막 편집 + 결과 카드 포함 토글
     │   │   ├── export_prefetch_screen.dart  # 원본 영상 다운로드
-    │   │   ├── export_compose_screen.dart   # ffmpeg 합성 진행률 + 캔슬
+    │   │   ├── export_compose_screen.dart   # ffmpeg 합성 진행률 + 캔슬 (결과 카드 PNG 캡처도 여기)
     │   │   └── export_result_screen.dart    # 미리보기 + 갤러리 저장 + 공유
+    │   ├── result_card/            # 챌린지 결과 1장 카드 (영상 export 와 독립 도메인)
+    │   │   ├── result_card_widget.dart  # 480x864 고정 위젯. 캡처 시 RepaintBoundary 로 감쌈
+    │   │   └── result_card_screen.dart  # 풀스크린 라우트 + 갤러리 저장 + 공유. 닉네임 fetch
     │   └── *_screen.dart           # 카드·상세 양쪽에서 ChallengeBadgesRow 사용
     └── amount/                       # 기록 추가/수정 + 촬영 + 미리보기
         ├── amount_record_screen.dart    # 폼 (지출/무지출 토글). 카메라 인라인 없음 — VideoAttachmentSection 만 (즉시 모드)
@@ -342,7 +357,8 @@ flutter run    # 연결된 디바이스/에뮬레이터에서 실행 (기본 bas
 | Flutter 새 화면의 비동기 로딩 | `AsyncStateMixin<W, T>` + `AsyncStateView<T>` 사용 ([presentation/common/async_state.dart](tenk_app/lib/presentation/common/async_state.dart)). `FutureBuilder` 금지. `fetch()` 오버라이드 + `didChangeDependencies`에서 `ensureLoaded()`. 외부 동작 결과를 즉시 반영하려면 `replaceData(next)`, 그 외 갱신은 `reload()`. 에러는 `toApiException(e).message`로 SnackBar 노출 |
 | Flutter 새 공용 위젯 | 두 화면 이상이 같은 위젯을 쓰면 즉시 추출. 도메인 전용은 `presentation/<domain>/widgets/`, 도메인 무관은 `presentation/common/` |
 | camera 패키지 fork 갱신 | [tenk_app/vendor/camera_patched/camera_android_camerax](tenk_app/vendor/camera_patched/camera_android_camerax) 가 업스트림 `camera_android_camerax` 의 fork. `pubspec.yaml` `dependency_overrides` 로 주입. **패치 두 군데**: `initializeCamera` 의 `bindToLifecycle` 리스트 (`imageAnalysis` 자리에 `videoCapture` 를 넣음) + `stopVideoRecording` 의 `_unbindUseCaseFromLifecycle(videoCapture!)` 제거. 둘 다 `[tenk fork patch]` 주석으로 표시. **사유**: 업스트림은 VideoCapture 를 lazy bind 라 매 녹화 시작마다 Camera2 capture session 이 재구성돼 preview freeze. eager bind 로 전환해 freeze 자체 제거. Tenk 가 image stream 을 안 써서 ImageAnalysis 를 lazy 로 미뤄도 무해. **업스트림 버전 올릴 때**: pub cache 에서 신버전 디렉토리 통째로 vendor 에 덮어쓰고 두 지점 재적용. CameraX UseCase 조합 표 ([공식 문서](https://developer.android.com/media/camera/camerax/architecture#combine-use-cases)) 기준 P+IC+VC 는 LIMITED 이상 지원 — 4-way 는 LEVEL_3 한정이므로 ImageAnalysis 를 같이 추가하지 말 것 |
-| 영상 export 합성 파이프라인 변경 | [VideoComposer](tenk_app/lib/data/export/video_composer.dart) 에서 ffmpeg 명령 구성. **인코더는 sw `mpeg4` 고정 — 바꾸지 말 것**. `h264_mediacodec`(hw silent fail) / `libx264`(GPL · 빌드 미포함) / `libkvazaar`(native crash) 모두 실격됐고 경로는 `_videoEncoder` 주석 + [handoff.md "함정 — H.264/HEVC sw 인코더 다 막힘"](docs/handoff.md) 에 박혀 있다. **자막은 ffmpeg drawtext 대신 Flutter `TextPainter` 로 PNG 그려 `overlay` 필터로 합성 — drawtext 로 회귀하지 말 것** (ffmpeg 8.0 의 multi-codepoint 한글 silent drop 회귀, [handoff.md "함정 — drawtext 한글 회귀"](docs/handoff.md) 참고). 자막 좌표/폰트크기/박스 스타일은 `_drawTextBlock` 안에서 조절. 합성 파라미터(해상도/비트레이트/xfade 길이 등)는 모두 클래스 상단 상수 |
+| 영상 export 합성 파이프라인 변경 | [VideoComposer](tenk_app/lib/data/export/video_composer.dart) 에서 ffmpeg 명령 구성. **인코더는 sw `mpeg4` 고정 — 바꾸지 말 것**. `h264_mediacodec`(hw silent fail) / `libx264`(GPL · 빌드 미포함) / `libkvazaar`(native crash) 모두 실격됐고 경로는 `_videoEncoder` 주석 + [handoff.md "함정 — H.264/HEVC sw 인코더 다 막힘"](docs/handoff.md) 에 박혀 있다. **자막은 ffmpeg drawtext 대신 Flutter `TextPainter` 로 PNG 그려 `overlay` 필터로 합성 — drawtext 로 회귀하지 말 것** (ffmpeg 8.0 의 multi-codepoint 한글 silent drop 회귀, [handoff.md "함정 — drawtext 한글 회귀"](docs/handoff.md) 참고). 자막 좌표/폰트크기/박스 스타일은 `_drawTextBlock` 안에서 조절. 합성 파라미터(해상도/비트레이트/xfade 길이 등)는 모두 클래스 상단 상수. **결과 카드 마지막 클립**은 `resultCardPngPath` 옵션으로 합성 — `_normalizeStaticImageClip` 가 `-loop 1 -t 3.0` 으로 3초 정지 클립 만들고 `_concatWithXfade` 가 가변 duration 으로 xfade offset 누적 |
+| 결과 카드 도메인 변경 | [ResultCardWidget](tenk_app/lib/presentation/challenge/result_card/result_card_widget.dart) 가 480x864 고정 사이즈로 모든 콘텐츠를 그린다 — 좌표/폰트 크기는 영상 export 해상도와 1:1. **색은 ThemeData 안 쓰고 hardcode** (캡처 시 컨텍스트 영향 회피). 빈 슬롯 (배지 0개 / 무지출 0일) 은 라인 통째 생략 — 자리 흔들리지 않게. 캡처는 [ResultCardCapture](tenk_app/lib/data/export/result_card_capture.dart) 가 Overlay off-screen + RepaintBoundary 패턴으로 처리 (배지 자산 `precacheImage` + 2 frame 대기 필수). 진입점은 ① [ChallengeDetailScreen._finalize](tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) 의 finalize 직후 자동 push (배지 큐 뒤) ② [_ResultCardEntryCard](tenk_app/lib/presentation/challenge/challenge_detail_screen.dart) (확정 후에만 노출) ③ 영상 export 마지막 클립 (체크박스 기본 ON). 영상용은 `pixelRatio: 1.0` (480x864), 갤러리/공유는 `2.0` (HiDPI). 배지 카탈로그를 바꾸면 결과 카드 안의 `_BadgeRow` (최대 6 + N) 도 같이 검토 |
 
 ## 미해결/다음 단계
 

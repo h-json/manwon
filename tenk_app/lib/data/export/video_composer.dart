@@ -33,6 +33,7 @@ class VideoComposer {
   static const int _outHeight = 864;
   static const double _clipDurationSec = 2.0;
   static const double _xfadeDurationSec = 0.3;
+  static const double _resultCardDurationSec = 3.0;
   static const String _videoBitrate = '1500k';
 
   // ffmpeg 내장 MPEG-4 Part 2 sw 인코더. LGPL, 외부 라이브러리 의존 0, 검증된 안정성.
@@ -56,12 +57,16 @@ class VideoComposer {
   /// 결과 파일 경로 반환. 도중 [cancel] 호출하면 [VideoComposeCancelled] 던짐.
   ///
   /// [outputPath] 가 이미 있으면 덮어쓴다 (회의 결정 #13 캐싱 X).
+  ///
+  /// [resultCardPngPath] 가 non-null 이면 정규화된 마지막 클립으로 결과 카드 PNG 를 3초 정지 화면
+  /// (`_resultCardDurationSec`) 으로 추가한 뒤 concat. PNG 는 480x864 (영상 export 해상도와 1:1) 가 가정.
   Future<String> compose({
     required ExportPlan plan,
     required int challengeTargetAmount,
     required DateTime challengeStartDate,
     required String outputPath,
     required void Function(ComposeProgress progress) onPhase,
+    String? resultCardPngPath,
   }) async {
     _cancelled = false;
 
@@ -71,6 +76,9 @@ class VideoComposer {
 
     final tmpDir = await _ensureWorkDir(challengeStartDate);
     final normalizedPaths = <String>[];
+    final clipDurations = <double>[];
+    final totalNormalizeSteps =
+        plan.clips.length + (resultCardPngPath != null ? 1 : 0);
 
     // 1. Pass 1 — 클립별 정규화. 자막은 Flutter TextPainter 로 PNG 그려 overlay 합성 (drawtext 미사용).
     final dashboardTexts = _buildDashboardTexts(plan, challengeTargetAmount, challengeStartDate);
@@ -79,7 +87,7 @@ class VideoComposer {
       onPhase(ComposeProgress(
         phase: ComposePhase.normalizing,
         currentIndex: i,
-        totalCount: plan.clips.length,
+        totalCount: totalNormalizeSteps,
         message: '클립 정규화 ${i + 1}/${plan.clips.length}',
       ));
       final clip = plan.clips[i];
@@ -90,6 +98,27 @@ class VideoComposer {
         outputPath: outPath,
       );
       normalizedPaths.add(outPath);
+      clipDurations.add(_clipDurationSec);
+    }
+
+    // 1.5. 결과 카드 (선택) — 정지 화면 3초. PNG 가 480x864 이라 scale/pad 는 사실상 noop 이지만
+    // 다른 입력 케이스를 위해 안전망으로 유지.
+    if (resultCardPngPath != null) {
+      _throwIfCancelled();
+      onPhase(ComposeProgress(
+        phase: ComposePhase.normalizing,
+        currentIndex: plan.clips.length,
+        totalCount: totalNormalizeSteps,
+        message: '결과 카드 추가',
+      ));
+      final cardOut = '${tmpDir.path}/norm_card.mp4';
+      await _normalizeStaticImageClip(
+        inputPng: resultCardPngPath,
+        durationSec: _resultCardDurationSec,
+        outputPath: cardOut,
+      );
+      normalizedPaths.add(cardOut);
+      clipDurations.add(_resultCardDurationSec);
     }
 
     // 3. Pass 2 — concat with xfade. 클립 1개면 그냥 복사.
@@ -105,6 +134,7 @@ class VideoComposer {
     } else {
       await _concatWithXfade(
         inputs: normalizedPaths,
+        durations: clipDurations,
         outputPath: outputPath,
       );
     }
@@ -306,14 +336,42 @@ class VideoComposer {
     painter.dispose();
   }
 
-  Future<void> _concatWithXfade({
-    required List<String> inputs,
+  /// 결과 카드 PNG 같은 정지 이미지를 [durationSec] 길이의 클립으로 정규화. lavfi color 분기와 비슷하지만
+  /// 자막 overlay 가 없고, 이미지 자체가 콘텐츠라 그대로 scale/pad 만 통과시킨다 (480x864 PNG 라 noop).
+  Future<void> _normalizeStaticImageClip({
+    required String inputPng,
+    required double durationSec,
     required String outputPath,
   }) async {
-    // xfade 체이닝: 각 transition 의 offset 은 누적 (앞 클립 끝나기 0.3초 전부터).
-    // 각 정규화 클립이 정확히 2초라고 가정 — `-t 2.0` 으로 클리핑했음.
+    final inEsc = _escapePath(inputPng);
+    final outEsc = _escapePath(outputPath);
+    final cmd = [
+      '-y',
+      '-loop', '1',
+      '-i', inEsc,
+      '-t', durationSec.toString(),
+      '-vf',
+      'scale=$_outWidth:$_outHeight:force_original_aspect_ratio=decrease,'
+          'pad=$_outWidth:$_outHeight:(ow-iw)/2:(oh-ih)/2:black,'
+          'setsar=1,format=$_outPixFmt',
+      '-an',
+      '-c:v', _videoEncoder,
+      '-b:v', _videoBitrate,
+      '-r', '30',
+      outEsc,
+    ];
+    await _runFfmpeg(cmd);
+  }
+
+  Future<void> _concatWithXfade({
+    required List<String> inputs,
+    required List<double> durations,
+    required String outputPath,
+  }) async {
+    assert(inputs.length == durations.length);
+    // xfade 체이닝: 각 transition 의 offset 은 이전까지 체인 길이 - overlap.
+    // 클립 길이가 가변이라 (결과 카드 3초 등) 누적값을 클립별 duration 으로 계산해야 한다.
     final overlap = _xfadeDurationSec;
-    final clipLen = _clipDurationSec;
 
     final args = <String>['-y'];
     for (final p in inputs) {
@@ -322,14 +380,16 @@ class VideoComposer {
 
     final buf = StringBuffer();
     String prev = '[0:v]';
+    double seqLen = durations[0];
     for (var i = 1; i < inputs.length; i++) {
       final next = '[$i:v]';
       // 마지막 xfade 출력도 일단 중간 라벨로 받고, 뒤에서 format= 으로 통일해 [outv] 로 보낸다.
       final xfadeOut = '[x$i]';
-      final offset = (clipLen - overlap) + (i - 1) * (clipLen - overlap);
+      final offset = seqLen - overlap;
       buf.write(
           '$prev${next}xfade=transition=fade:duration=$overlap:offset=${offset.toStringAsFixed(2)}$xfadeOut;');
       prev = xfadeOut;
+      seqLen += durations[i] - overlap;
     }
     // 인코더 픽셀 포맷 정합 — mpeg4 는 yuv420p 가 정공법.
     buf.write('${prev}format=$_outPixFmt[outv]');

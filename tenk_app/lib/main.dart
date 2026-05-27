@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-// 카카오 SDK에도 `AuthApi`가 있어 우리 쪽 [AuthApi]와 충돌하므로 가린다.
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' hide AuthApi;
+// 카카오 SDK에도 `AuthApi`/`UserApi`가 있어 우리 쪽과 충돌하므로 가린다.
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'
+    hide AuthApi, UserApi;
 
 import 'app/navigator_key.dart';
 import 'app/scopes.dart';
@@ -13,6 +14,7 @@ import 'data/auth/auth_repository.dart';
 import 'data/auth/token_storage.dart';
 import 'data/challenge/challenge_api.dart';
 import 'data/media/media_api.dart';
+import 'data/user/user_api.dart';
 import 'presentation/login/login_screen.dart';
 
 /// Composition root.
@@ -33,12 +35,14 @@ void main() {
   final challengeApi = ChallengeApi(authDio: dioClient.authDio);
   final amountApi = AmountApi(authDio: dioClient.authDio);
   final mediaApi = MediaApi(authDio: dioClient.authDio);
+  final userApi = UserApi(authDio: dioClient.authDio);
 
   runApp(TenkApp(
     authRepository: authRepository,
     challengeApi: challengeApi,
     amountApi: amountApi,
     mediaApi: mediaApi,
+    userApi: userApi,
   ));
 }
 
@@ -58,12 +62,14 @@ class TenkApp extends StatelessWidget {
     required this.challengeApi,
     required this.amountApi,
     required this.mediaApi,
+    required this.userApi,
   });
 
   final AuthRepository authRepository;
   final ChallengeApi challengeApi;
   final AmountApi amountApi;
   final MediaApi mediaApi;
+  final UserApi userApi;
 
   @override
   Widget build(BuildContext context) {
@@ -75,15 +81,18 @@ class TenkApp extends StatelessWidget {
           api: amountApi,
           child: MediaScope(
             api: mediaApi,
-            child: MaterialApp(
-              title: 'Tenk',
-              navigatorKey: navigatorKey,
-              theme: ThemeData(
-                colorScheme:
-                    ColorScheme.fromSeed(seedColor: const Color(0xFFFEE500)),
-                useMaterial3: true,
+            child: UserScope(
+              api: userApi,
+              child: MaterialApp(
+                title: 'Tenk',
+                navigatorKey: navigatorKey,
+                theme: ThemeData(
+                  colorScheme:
+                      ColorScheme.fromSeed(seedColor: const Color(0xFFFEE500)),
+                  useMaterial3: true,
+                ),
+                home: const SessionGate(),
               ),
-              home: const SessionGate(),
             ),
           ),
         ),
